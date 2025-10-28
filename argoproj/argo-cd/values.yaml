@@ -1,0 +1,17 @@
+app:
+  namespaceOverride: argocd
+  server:
+    service:
+      type: ClusterIP
+  ingress:
+    enabled: false
+  dex:
+    enabled: true
+  configs:
+    params:
+      - name: server.insecure
+        value: "true"
+    secret:
+      createSecret: true
+    cm:
+      create: true
