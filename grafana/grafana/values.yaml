@@ -1,4 +1,4 @@
-grafana:
+app:
   env:
     GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: false
     GF_ANALYTICS_CHECK_FOR_UPDATES: false
