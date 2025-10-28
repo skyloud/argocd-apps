@@ -1,0 +1,86 @@
+grafana:
+  # Handled by iac Module
+  # admin:
+  #   existingSecret: grafana-admin-password
+  #   passwordKey: admin-password
+  #   userKey: admin-user
+  # datasources:
+  #   loki.yaml:
+  #     apiVersion: 1
+  #     datasources:
+  #       - access: proxy
+  #         editable: false
+  #         jsonData:
+  #           httpHeaderName1: X-Scope-OrgID
+  #           manageAlerts: true
+  #           prometheusType: Loki
+  #         name: Loki
+  #         secureJsonData:
+  #           httpHeaderValue1: sky
+  #         timeout: 5m
+  #         type: loki
+  #         uid: loki
+  #         url: http://loki.grafana-loki.svc.cluster.local:3100
+  #   mimir.yaml:
+  #     apiVersion: 1
+  #     datasources:
+  #       - access: proxy
+  #         editable: false
+  #         jsonData:
+  #           httpHeaderName1: X-Scope-OrgID
+  #           manageAlerts: true
+  #           prometheusType: Mimir
+  #         name: Mimir
+  #         secureJsonData:
+  #           httpHeaderValue1: sky
+  #         timeout: 5m
+  #         type: prometheus
+  #         uid: prometheus
+  #         url: http://mimir-nginx.grafana-mimir.svc.cluster.local:80/prometheus
+  env:
+    GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: false
+    GF_ANALYTICS_CHECK_FOR_UPDATES: false
+    GF_ANALYTICS_REPORTING_ENABLED: false
+    GF_SERVER_ROOT_URL: https://grafana.etienne.playground.skyloud.net
+    GF_USERS_USER_INVITE_MAX_LIFETIME_DURATION: 7d
+    GF_USERS_VIEWERS_CAN_EDIT: true
+  ingress:
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/proxy-read-timeout: 600
+    enabled: true
+    hosts:
+      - grafana.etienne.playground.skyloud.net
+    ingressClassName: nginx
+    tls:
+      - hosts:
+          - grafana.etienne.playground.skyloud.net
+        secretName: grafana-etienne-playground-skyloud-net-tls
+  initChownData:
+    enabled: false
+  rbac:
+    create: true
+  serviceMonitor:
+    enabled: true
+  sidecar:
+    alerts:
+      enabled: true
+      label: grafana_alert
+      searchNamespace: ALL
+    dashboards:
+      enabled: false
+    datasources:
+      enabled: false
+    notifiers:
+      enabled: false
+    plugins:
+      enabled: false
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  testFramework:
+    enabled: false
