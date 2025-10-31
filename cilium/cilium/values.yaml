@@ -1,2 +1,18 @@
 app:
   namespaceOverride: system-cilium
+
+  envoyConfig:
+    secretsNamespace: 
+      name: system-cilium
+
+  ingressController:
+    secretsNamespace: 
+      name: system-cilium
+
+  gatewayApi:
+    secretsNamespace: 
+      name: system-cilium
+
+  tls:
+    secretsNamespace: 
+      name: system-cilium

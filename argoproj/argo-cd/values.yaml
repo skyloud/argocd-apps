@@ -1,4 +1,6 @@
 app:
+  crds:
+    install: true
   namespaceOverride: argocd
   server:
     service:
@@ -9,9 +11,14 @@ app:
     enabled: true
   configs:
     params:
-      - name: server.insecure
-        value: "true"
+      create: true
+      annotations: {}
+      enabled: true
+      list:
+        - name: server.insecure
+          value: "true"
     secret:
       createSecret: true
     cm:
       create: true
+      application.resourceTrackingMethod: server
