@@ -1,0 +1,5 @@
+app:
+  rbac:
+    create: true
+  serviceMonitor:
+    enabled: true
