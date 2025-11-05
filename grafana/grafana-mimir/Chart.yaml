@@ -3,7 +3,7 @@ name: grafana-mimir
 version: 5.8.0
 type: application
 dependencies:
-  - name: grafana-mimir
+  - name: mimir
     version: ~5.8.0
     repository: "https://grafana.github.io/helm-charts"
     alias: app
