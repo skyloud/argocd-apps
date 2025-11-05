@@ -1,5 +1,140 @@
 app:
-  rbac:
-    create: true
-  serviceMonitor:
+  adminCredentials:
+    passwordKey: admin-password
+    secretName: loki-admin-password
+    usernameKey: admin-user
+  alertsEnabled: true
+  backend:
+    replicas: 0
+  chunksCache:
+    enabled: false
+  deploymentMode: SingleBinary
+  domain: ""
+  fullnameOverride: loki
+  gateway:
+    autoscaling:
+      enabled: true
+      maxReplicas: 5
+      minReplicas: 1
+      targetCPUUtilizationPercentage: 90
+      targetMemoryUtilizationPercentage: 80
+    basicAuth:
+      enabled: false
     enabled: true
+    ingress:
+      enabled: false
+    replicas: 1
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+    service:
+      labels:
+        prometheus.io/service-monitor: false
+    verboseLogging: true
+  global:
+    dnsService: coredns
+  loki:
+    commonConfig:
+      replication_factor: 1
+    frontend:
+      max_outstanding_per_tenant: 4096
+    limits_config:
+      max_cache_freshness_per_query: 10m
+      max_query_parallelism: 32
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      split_queries_by_interval: 30m
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 4096
+    schemaConfig:
+      configs:
+      - from: 2024-04-01
+        index:
+          period: 24h
+          prefix: index_
+        object_store: filesystem
+        schema: v13
+        store: tsdb
+    storage:
+      type: filesystem
+  lokiCanary:
+    enabled: false
+  minio:
+    enabled: true
+  monitoring:
+    lokiCanary:
+      enabled: false
+    rules:
+      alerting: false
+      enabled: true
+    selfMonitoring:
+      enabled: false
+      grafanaAgent:
+        installOperator: false
+    serviceMonitor:
+      enabled: true
+  namespace: grafana-loki
+  networkPolicy:
+    alertmanager:
+      namespaceSelector:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+          - grafana-alloy
+          - prometheus
+    enabled: false
+    externalStorage:
+      cidrs:
+      - 0.0.0.0/0
+      ports:
+      - 443
+    ingress:
+      namespaceSelector:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+          - argocd
+          - grafana
+          - grafana-alloy
+          - promtail
+    metrics:
+      namespaceSelector:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+          - grafana-alloy
+          - prometheus
+  networkPolicyEnabled: false
+  read:
+    replicas: 0
+  resultsCache:
+    enabled: false
+  singleBinary:
+    autoscaling:
+      enabled: true
+      maxReplicas: 20
+      minReplicas: 1
+      targetCPUUtilizationPercentage: 95
+      targetMemoryUtilizationPercentage: 80
+    nodeSelector: {}
+    persistence:
+      enableStatefulSetAutoDeletePVC: true
+    replicas: 1
+    resources:
+      limits:
+        memory: 2Gi
+      requests:
+        cpu: 200m
+        memory: 512Mi
+    tolerations: []
+  tenantID: sky
+  test:
+    enabled: false
+  write:
+    replicas: 0
