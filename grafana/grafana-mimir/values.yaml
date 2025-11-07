@@ -1,84 +1,85 @@
-
-admin-cache:
-  enabled: false
-# Keep ? Extra values in mimir configuration
-# alertmanager:
-#   fallbackConfig: |
-#     global:
-#       resolve_timeout: 5m
-#     receivers:
-#     - name: null
-#     - name: betteruptime_heartbeat
-#       webhook_configs:
-#       - url: https://uptime.betterstack.com/api/v1/heartbeat/qWruW3ywm25JmeEuGXKG4py3
-#     - name: betteruptime_webhook
-#       webhook_configs:
-#       - url: https://uptime.betterstack.com/api/v1/prometheus/webhook/TKxPashrf128y5pDznn6p5KP
-#     - name: skyloud
-#       webhook_configs:
-#       - send_resolved: true
-#         url: https://c582a210-3a5c-488e-9e61-f2d9f75ecbfa.skyloud.net/v1/alerts/6892a5681685fd04a9c4188a/SKYVNKJ0DF6EI34NXGT6
-#     route:
-#       group_by:
-#       - alertname
-#       group_interval: 1m
-#       group_wait: 30s
-#       receiver: null
-#       repeat_interval: 1h
-#       routes:
-#       - matchers:
-#         - alertname=Watchdog
-#         receiver: betteruptime_heartbeat
-#         repeat_interval: 1m
-#       - matchers:
-#         - alertowner=skyloud
-#         receiver: betteruptime_webhook
-#         repeat_interval: 15m
-  replicas: 1
-chunks-cache:
-  enabled: false
-gateway:
-  enabled: false
-global:
-  dnsService: coredns
-index-cache:
-  enabled: false
-ingester:
-  zoneAwareReplication:
+app:
+  admin-cache:
     enabled: false
-kafka:
-  enabled: false
-metaMonitoring:
-  dashboards:
+######## Keep ? Extra values in mimir configuration#########
+  alertmanager:
+    fallbackConfig: |
+      global:
+        resolve_timeout: 5m
+      receivers:
+      - name: null
+      - name: betteruptime_heartbeat
+        webhook_configs:
+        - url: https://uptime.betterstack.com/api/v1/heartbeat/qWruW3ywm25JmeEuGXKG4py3
+      - name: betteruptime_webhook
+        webhook_configs:
+        - url: https://uptime.betterstack.com/api/v1/prometheus/webhook/TKxPashrf128y5pDznn6p5KP
+      - name: skyloud
+        webhook_configs:
+        - send_resolved: true
+          url: https://c582a210-3a5c-488e-9e61-f2d9f75ecbfa.skyloud.net/v1/alerts/6892a5681685fd04a9c4188a/SKYVNKJ0DF6EI34NXGT6
+      route:
+        group_by:
+        - alertname
+        group_interval: 1m
+        group_wait: 30s
+        receiver: null
+        repeat_interval: 1h
+        routes:
+        - matchers:
+          - alertname=Watchdog
+          receiver: betteruptime_heartbeat
+          repeat_interval: 1m
+        - matchers:
+          - alertowner=skyloud
+          receiver: betteruptime_webhook
+          repeat_interval: 15m
+    replicas: 1
+###############################################
+  chunks-cache:
     enabled: false
-  enabled: true
-  serviceMonitor:
-    enabled: true
-metadata-cache:
-  enabled: false
-mimir:
-  structuredConfig:
-    alertmanager:
-      sharding_ring:
-        replication_factor: 2
-    ingest_storage:
+  gateway:
+    enabled: false
+  global:
+    dnsService: coredns
+  index-cache:
+    enabled: false
+  ingester:
+    zoneAwareReplication:
       enabled: false
-    ingester:
-      push_grpc_method_enabled: true
-      ring:
-        replication_factor: 1
-    store_gateway:
-      sharding_ring:
-        replication_factor: 1
-minio:
-  enabled: true
-nginx:
-  enabled: true
-  replicas: 1
-results-cache:
-  enabled: false
-rollout_operator:
-  enabled: false
-store_gateway:
-  zoneAwareReplication:
+  kafka:
     enabled: false
+  metaMonitoring:
+    dashboards:
+      enabled: false
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  metadata-cache:
+    enabled: false
+  mimir:
+    structuredConfig:
+      alertmanager:
+        sharding_ring:
+          replication_factor: 2
+      ingest_storage:
+        enabled: false
+      ingester:
+        push_grpc_method_enabled: true
+        ring:
+          replication_factor: 1
+      store_gateway:
+        sharding_ring:
+          replication_factor: 1
+  minio:
+    enabled: true
+  nginx:
+    enabled: true
+    replicas: 1
+  results-cache:
+    enabled: false
+  rollout_operator:
+    enabled: false
+  store_gateway:
+    zoneAwareReplication:
+      enabled: false

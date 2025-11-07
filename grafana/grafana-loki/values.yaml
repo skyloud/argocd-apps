@@ -1,8 +1,4 @@
 app:
-  adminCredentials:
-    passwordKey: admin-password
-    secretName: loki-admin-password
-    usernameKey: admin-user
   alertsEnabled: true
   backend:
     replicas: 0
@@ -126,12 +122,14 @@ app:
     persistence:
       enableStatefulSetAutoDeletePVC: true
     replicas: 1
+######Keep ? No Ressource Limits by default#####
     resources:
       limits:
         memory: 2Gi
       requests:
         cpu: 200m
         memory: 512Mi
+###############################################
     tolerations: []
   tenantID: sky
   test:
