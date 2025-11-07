@@ -5,7 +5,6 @@ app:
   chunksCache:
     enabled: false
   deploymentMode: SingleBinary
-  domain: ""
   fullnameOverride: loki
   gateway:
     autoscaling:
@@ -122,14 +121,6 @@ app:
     persistence:
       enableStatefulSetAutoDeletePVC: true
     replicas: 1
-######Keep ? No Ressource Limits by default#####
-    resources:
-      limits:
-        memory: 2Gi
-      requests:
-        cpu: 200m
-        memory: 512Mi
-###############################################
     tolerations: []
   tenantID: sky
   test:
