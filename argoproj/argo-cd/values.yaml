@@ -1,0 +1,24 @@
+app:
+  crds:
+    install: true
+  namespaceOverride: argocd
+  server:
+    service:
+      type: ClusterIP
+  ingress:
+    enabled: false
+  dex:
+    enabled: true
+  configs:
+    params:
+      create: true
+      annotations: {}
+      enabled: true
+      list:
+        - name: server.insecure
+          value: "true"
+    secret:
+      createSecret: true
+    cm:
+      create: true
+      application.resourceTrackingMethod: server
