@@ -6,13 +6,13 @@ metadata:
 spec:
  acme:
    # The ACME server URL
-   server: {{ .Values.app.defaultIssuer.acmeServer }}
-   email: {{ .Values.app.defaultIssuer.acmeEmail }}
+   server: {{ .Values.defaultIssuer.acmeServer }}
+   email: {{ .Values.defaultIssuer.acmeEmail }}
    # Name of a secret used to store the ACME account private key
    privateKeySecretRef:
-     name: {{ .Values.app.defaultIssuer.privateKeySecretRef }}
+     name: {{ .Values.defaultIssuer.privateKeySecretRef }}
    # Enable the HTTP-01 challenge provider
    solvers:
    - http01:
        ingress:
-         class: {{ .Values.app.defaultIssuer.ingressClass }}
+         class: {{ .Values.defaultIssuer.ingressClass }}
