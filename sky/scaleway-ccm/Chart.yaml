@@ -1,0 +1,5 @@
+apiVersion: v2
+name: scaleway-ccm
+description: A cloud-controller-manager for Scaleway
+version: 0.1.0
+type: application
