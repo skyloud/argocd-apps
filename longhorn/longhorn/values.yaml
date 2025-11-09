@@ -2,3 +2,13 @@ app:
   metrics:
     serviceMonitor:
       enabled: true
+  longhornManager:
+    log:
+      format: json
+  longhornDriver:
+    log:
+      format: json
+  longhornUI:
+    replicas: 1
+  networkPolicies:
+    enabled: true
