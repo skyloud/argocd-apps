@@ -1,10 +1,10 @@
+defaultIssuer:
+  email: ""
+  privateKeySecretRef: letsencrypt-prod
+  fullnameOverride: letsencrypt-prod
+  acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
+  ingressClass: nginx
 app:
-  defaultIssuer:
-    email: ""
-    privateKeySecretRef: letsencrypt-prod
-    fullnameOverride: letsencrypt-prod
-    acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
-    ingressClass: nginx
   installCRDs: true
   prometheus:
     enabled: true
