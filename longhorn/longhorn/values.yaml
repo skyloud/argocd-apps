@@ -1,0 +1,4 @@
+app:
+  metrics:
+    serviceMonitor:
+      enabled: true
