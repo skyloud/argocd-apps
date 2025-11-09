@@ -1,0 +1,103 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  annotations:
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/description: Detect and replace Bitnami images with their
+      legacy counterparts due to sunset of the bitnami org on dockerhub and move to
+      bitnamilagacy.
+    policies.kyverno.io/identifier: replace-bitnami-repo
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Images
+    policies.kyverno.io/title: Replace Bitnami Images
+  name: replace-bitnami-repo
+spec:
+  admission: true
+  background: false
+  emitWarning: false
+  rules:
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    mutate:
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            bitnami/images: |-
+              {{ join(',',
+                (request.object.spec.[initContainers,containers] || [] | [])
+                [?regex_match('^(docker.io/)?bitnami/.*$', image) ]
+                .image
+              ) }}
+          labels:
+            bitnami/images-detected: "true"
+    name: identify-bitnami-images
+    preconditions:
+      all:
+      - key: |-
+          {{ join(',',
+            (request.object.spec.[initContainers,containers] || [] | [])
+            [?regex_match('^(docker.io/)?bitnami/.*$', image) ]
+            .image
+          ) }}
+        operator: NotEquals
+        value: ""
+    skipBackgroundRequests: true
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    mutate:
+      foreach:
+      - list: request.object.spec.containers
+        patchStrategicMerge:
+          spec:
+            containers:
+            - (name): '{{element.name}}'
+              image: '{{ regex_replace_all(''^(docker.io\/bitnami\/|bitnami\/)'',
+                ''{{element.image}}'', ''docker.io/bitnamilegacy/'') }}'
+    name: replace-bitnami-containers-images
+    preconditions:
+      all:
+      - key: |-
+          {{ join(',',
+            (request.object.spec.containers || [])
+            [?regex_match('^(docker.io/)?bitnami/.*$', image) ]
+            .image
+          ) }}
+        operator: NotEquals
+        value: ""
+    skipBackgroundRequests: true
+  - match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    mutate:
+      foreach:
+      - list: request.object.spec.initContainers
+        patchStrategicMerge:
+          spec:
+            initContainers:
+            - (name): '{{element.name}}'
+              image: '{{ regex_replace_all(''^(docker.io\/bitnami\/|bitnami\/)'',
+                ''{{element.image}}'', ''docker.io/bitnamilegacy/'') }}'
+    name: replace-bitnami-initcontainers-images
+    preconditions:
+      all:
+      - key: '{{ request.object.spec.initContainers[] || `[]` | length(@) }}'
+        operator: GreaterThan
+        value: 0
+      - key: |-
+          {{ join(',',
+            (request.object.spec.initContainers || [])
+            [?regex_match('^(docker.io/)?bitnami/.*$', image) ]
+            .image
+          ) }}
+        operator: NotEquals
+        value: ""
+    skipBackgroundRequests: true
+  validationFailureAction: Audit

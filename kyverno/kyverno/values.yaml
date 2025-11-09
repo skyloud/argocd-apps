@@ -1,0 +1,67 @@
+app:
+  admissionController:
+    annotations:
+      skyloud.fr/temporary-fix: Admission webhook enforces temporary image rewrite while
+        Bitnami repos are in transition.
+    enabled: true
+    nodeSelector: {}
+    podAnnotations:
+      skyloud.fr/temporary-fix: Admission webhook enforces temporary image rewrite while
+        Bitnami repos are in transition.
+      skyloud.io/temporary-fix.details: Bitnami is sunsetting the 'bitnami' organization
+        on Docker Hub and moving images to 'bitnamilegacy'. See https://github.com/bitnami/containers/issues/83267
+        for details.
+      skyloud.io/temporary-fix.reason: Bitnami images moved to a new repository. This
+        webhook rewrites image references from 'bitnami/' to 'bitnamilegacy/' as a temporary
+        fix.
+      skyloud.io/temporary-fix.until: "2026-12-31"
+    replicas: 2
+    resources:
+      limits:
+        cpu: "1"
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    service:
+      annotations:
+        skyloud.fr/temporary-fix.details: Admission webhook enforces temporary image
+          rewrite while Bitnami repos are in transition.
+        skyloud.io/temporary-fix.details: Bitnami is sunsetting the 'bitnami' organization
+          on Docker Hub and moving images to 'bitnamilegacy'. See https://github.com/bitnami/containers/issues/83267
+          for details.
+        skyloud.io/temporary-fix.reason: Bitnami images moved to a new repository. This
+          webhook rewrites image references from 'bitnami/' to 'bitnamilegacy/' as a
+          temporary fix.
+        skyloud.io/temporary-fix.until: "2026-12-31"
+    tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+  backgroundController:
+    enabled: false
+  cleanupController:
+    enabled: false
+  crds:
+    groups:
+      reports:
+        clusterephemeralreports: false
+        ephemeralreports: false
+      wgpolicyk8s:
+        clusterpolicyreports: false
+        policyreports: false
+    install: true
+  features:
+    admissionReports:
+      enabled: false
+    aggregateReports:
+      enabled: false
+    backgroundScan:
+      enabled: false
+  openreports:
+    enabled: false
+  reportsController:
+    enabled: false
+  reportsServer:
+    enabled: false
