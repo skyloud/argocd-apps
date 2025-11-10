@@ -1,7 +1,0 @@
-namespace: argocd
-
-sops:
-  aws:
-    defaultRegion: eu-west-3
-    accessKeyId: ""
-    secretAccessKey: ""
