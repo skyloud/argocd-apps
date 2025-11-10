@@ -15,3 +15,10 @@ app:
       createSecret: true
     cm:
       create: true
+      application.resourceTrackingMethod: server
+
+sops:
+  aws:
+    defaultRegion: eu-west-3
+    accessKeyId: ""
+    secretAccessKey: ""
