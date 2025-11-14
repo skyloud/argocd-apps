@@ -1,10 +1,10 @@
 apiVersion: v2
 name: karpenter
-version: 0.16.3
+version: 1.8.2
 type: application
 
 dependencies:
   - name: karpenter
-    version: ~0.16.3
-    repository: "https://charts.karpenter.sh"
+    version: ~1.8.2
+    repository: "oci://public.ecr.aws/karpenter/karpenter"
     alias: app
