@@ -6,8 +6,8 @@ metadata:
   name: {{ printf "%s-node-class" $name }}
 spec:
   kubelet:
-    podsPerCore: {{ default 2 $nc.podsPerCore }}
-    maxPods: {{ default 20 $nc.maxPods }}
+    podsPerCore: {{ default 25 $nc.podsPerCore }}
+    maxPods: {{ default 110 $nc.maxPods }}
     systemReserved:
       cpu: {{ default "100m" $nc.systemReserved.cpu }}
       memory: {{ default "100Mi" $nc.systemReserved.memory }}
