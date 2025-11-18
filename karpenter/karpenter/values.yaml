@@ -11,15 +11,15 @@ app:
         - "sg-01234567890123456"
       amiSelectorTerms:
         - alias: "bottlerocket@latest"
-      rootVolume:
-        device_name: "/dev/xvda"
-        type: "gp3"
-        size: "20Gi"
+      deviceMappings:
+        - deviceName: "/dev/xvda"
+          ebs:
+            volumeSize: "20Gi"
+            volumeType: "gp3"
 # AWS node pools example:
   nodePools:
     default:
       class: "default"
-      replicas: 1
       expireAfter: "720h"
       capacityTypes: ["spot", "on-demand"]
       architectures: ["amd64", "arm64"]
