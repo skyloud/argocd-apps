@@ -1,1 +1,30 @@
-app: {}
+app: 
+  clusterName: "my-cluster"
+# AWS node classes example:
+  nodeClasses:
+    default:
+      amiFamily: "bottlerocket"
+      role: "arn:aws:iam::123456789012:role/KarpenterNodeRole"
+      subnetIds:
+        - "subnet-01234567890123456"
+      securityGroupIds:
+        - "sg-01234567890123456"
+      amiSelectorTerms:
+        - alias: "bottlerocket@latest"
+      rootVolume:
+        device_name: "/dev/xvda"
+        type: "gp3"
+        size: "20Gi"
+# AWS node pools example:
+  nodePools:
+    default:
+      class: "default"
+      replicas: 1
+      expireAfter: "720h"
+      capacityTypes: ["spot", "on-demand"]
+      architectures: ["amd64", "arm64"]
+      instanceCategories: ["c", "m", "r"]
+      instanceCpus: [2, 4, 8]
+      limits:
+        cpu: 200
+        memory: "500Gi"

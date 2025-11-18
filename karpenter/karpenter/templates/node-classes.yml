@@ -1,0 +1,86 @@
+{{- range $name, $nc := $.Values.app.nodeClasses }}
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: {{ printf "%s-node-class" $name }}
+spec:
+  kubelet:
+    podsPerCore: {{ default 2 $nc.podsPerCore }}
+    maxPods: {{ default 20 $nc.maxPods }}
+    systemReserved:
+      cpu: {{ default "100m" $nc.systemReserved.cpu }}
+      memory: {{ default "100Mi" $nc.systemReserved.memory }}
+      ephemeral-storage: {{ default "1Gi" $nc.systemReserved.ephemeral-storage }}
+    kubeReserved:
+      cpu: {{ default "200m" $nc.kubeReserved.cpu }}
+      memory: {{ default "100Mi" $nc.kubeReserved.memory }}
+      ephemeral-storage: {{ default "3Gi" $nc.kubeReserved.ephemeral-storage }}
+    evictionHard:
+      memory.available: {{ default "5%" $nc.evictionHard.memory.available }}
+      nodefs.available: {{ default "10%" $nc.evictionHard.nodefs.available }}
+      nodefs.inodesFree: {{ default "10%" $nc.evictionHard.nodefs.inodesFree }}
+    evictionSoft:
+      memory.available: {{ default "500Mi" $nc.evictionSoft.memory.available }}
+      nodefs.available: {{ default "15%" $nc.evictionSoft.nodefs.available }}
+      nodefs.inodesFree: {{ default "15%" $nc.evictionSoft.nodefs.inodesFree }}
+    evictionSoftGracePeriod: 
+      memory.available: {{ default "1m" $nc.evictionSoftGracePeriod.memory.available }}
+      nodefs.available: {{ default "1m30s" $nc.evictionSoftGracePeriod.nodefs.available }}
+      nodefs.inodesFree: {{ default "2m" $nc.evictionSoftGracePeriod.nodefs.inodesFree }}
+    evictionMaxPodGracePeriod: {{ default "60" $nc.evictionMaxPodGracePeriod }}
+    imageGCHighThresholdPercent: {{ default "85" $nc.imageGCHighThresholdPercent }}
+    imageGCLowThresholdPercent: {{ default "80" $nc.imageGCLowThresholdPercent }}
+    cpuCFSQuota: {{ default true $nc.cpuCFSQuota }}
+    clusterDNS: {{ default ["10.0.1.100"] $nc.clusterDNS }}
+  amiFamily: {{ $nc.amiFamily }}
+  subnetSelectorTerms:
+    {{- range $index, $subnet := $nc.subnetIds }}
+    - id: {{ $subnet }}
+    {{- end }}
+  securityGroupSelectorTerms:
+    {{- if $nc.securityGroupIds }}
+      {{- range $index, $securityGroup := $nc.securityGroupIds }}
+      - id: {{ $securityGroup }}
+      {{- end }}
+    {{- else }}
+      - tags:
+          kubernetes.io/cluster/{{ $.Values.app.clusterName }}: owned
+    {{- end }}
+  role: {{ $nc.role }}
+  amiSelectorTerms:
+    {{- if $nc.amiSelectorTerms }}
+    {{- range $index, $amiSelectorTerm := $nc.amiSelectorTerms }}
+    - {{ $amiSelectorTerm }}
+    {{- end }}
+    {{- else }}
+    - alias: bottlerocket@latest
+    {{- end }}
+  {{- if $nc.capacityReservationSelectorTerms }}
+  capacityReservationSelectorTerms:
+    {{- range $index, $capacityReservationSelectorTerm := $nc.capacityReservationSelectorTerms }}
+    - {{ $capacityReservationSelectorTerm }}
+    {{- end }}
+  {{- end }}
+
+  {{- if $nc.blockDeviceMappings }}
+  blockDeviceMappings:
+    {{- range $index, $blockDeviceMapping := $nc.blockDeviceMappings }}
+    - deviceName: {{ $blockDeviceMapping.deviceName }}
+      ebs:
+        volumeSize: {{ $blockDeviceMapping.ebs.volumeSize }}
+        volumeType: {{ $blockDeviceMapping.ebs.volumeType }}
+        iops: {{ $blockDeviceMapping.ebs.iops }}
+        encrypted: {{ $blockDeviceMapping.ebs.encrypted }}
+        kmsKeyID: {{ $blockDeviceMapping.ebs.kmsKeyID }}
+        deleteOnTermination: {{ $blockDeviceMapping.ebs.deleteOnTermination }}
+        throughput: {{ $blockDeviceMapping.ebs.throughput }}
+        snapshotID: {{ $blockDeviceMapping.ebs.snapshotID }}
+        volumeInitializationRate: {{ $blockDeviceMapping.ebs.volumeInitializationRate }}
+    {{- end }}
+  {{- end }}
+  {{- if $nc.userData }}
+  userData: |
+    {{ $nc.userData }}
+  {{- end }}
+{{- end }}
