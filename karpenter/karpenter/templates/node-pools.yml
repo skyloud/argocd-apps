@@ -69,7 +69,6 @@ spec:
             - {{ . | toString | quote }}
             {{- end }}
         {{- end }}
-      {{- end }}
       {{- if gt (len $np.taints) 0 }}
       taints:
         {{- range $np.taints }}
