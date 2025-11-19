@@ -46,6 +46,15 @@ app:
 
   mimir:
     structuredConfig:
+      limits:
+        max_global_series_per_user: 2000000
+
+      server:
+        log_level: warn
+
+      query_scheduler:
+        max_outstanding_requests_per_tenant: 10000
+
       ingester:
         push_grpc_method_enabled: true
         ring:
