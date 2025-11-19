@@ -57,8 +57,10 @@ spec:
   role: {{ $nc.role }}
   amiSelectorTerms:
     {{- if $nc.amiSelectorTerms }}
-    {{- range $index, $amiSelectorTerm := $nc.amiSelectorTerms }}
-    - {{ $amiSelectorTerm }}
+    {{- range $index, $selector := $nc.amiSelectorTerms }}
+    {{- range $key, $value := $selector }}
+    - {{ $key }}: {{ $value | quote }}
+    {{- end }}
     {{- end }}
     {{- else }}
     - alias: bottlerocket@latest
