@@ -48,6 +48,7 @@ app:
     structuredConfig:
       limits:
         max_global_series_per_user: 2000000
+        out_of_order_time_window: 72h
 
       server:
         log_level: warn
@@ -57,6 +58,7 @@ app:
 
       ingester:
         push_grpc_method_enabled: true
+        out_of_order_time_window: 10m
         ring:
           replication_factor: 1
 
