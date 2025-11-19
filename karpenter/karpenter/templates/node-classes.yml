@@ -11,11 +11,11 @@ spec:
     systemReserved:
       cpu: {{ default "100m" $nc.systemReserved.cpu }}
       memory: {{ default "100Mi" $nc.systemReserved.memory }}
-      ephemeral-storage: {{ default "1Gi" $nc.systemReserved.ephemeral-storage }}
+      ephemeral-storage: {{ default "1Gi" $nc.systemReserved.ephemeralStorage }}
     kubeReserved:
       cpu: {{ default "200m" $nc.kubeReserved.cpu }}
       memory: {{ default "100Mi" $nc.kubeReserved.memory }}
-      ephemeral-storage: {{ default "3Gi" $nc.kubeReserved.ephemeral-storage }}
+      ephemeral-storage: {{ default "3Gi" $nc.kubeReserved.ephemeralStorage }}
     evictionHard:
       memory.available: {{ default "5%" $nc.evictionHard.memory.available }}
       nodefs.available: {{ default "10%" $nc.evictionHard.nodefs.available }}
