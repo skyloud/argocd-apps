@@ -4,6 +4,8 @@ apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: {{ printf "%s-node-class" $name }}
+  labels:
+    {{- include "karpenter.labels" . | nindent 4 }}
 spec:
   kubelet:
     podsPerCore: {{ default 25 $nc.podsPerCore }}
