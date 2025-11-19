@@ -34,12 +34,6 @@ spec:
     imageGCHighThresholdPercent: {{ default "85" $nc.imageGCHighThresholdPercent }}
     imageGCLowThresholdPercent: {{ default "80" $nc.imageGCLowThresholdPercent }}
     cpuCFSQuota: {{ default true $nc.cpuCFSQuota }}
-    {{- if $nc.clusterDNS }}
-    clusterDNS: {{ $nc.clusterDNS }}
-    {{- else }}
-    clusterDNS:
-      - "10.0.1.100"
-    {{- end }}
   amiFamily: {{ $nc.amiFamily }}
   subnetSelectorTerms:
     {{- range $index, $subnet := $nc.subnetIds }}
