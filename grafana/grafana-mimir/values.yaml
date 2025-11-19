@@ -1,0 +1,76 @@
+app:
+  global:
+    dnsService: "coredns"
+
+  alertmanager:
+    replicas: 0
+
+  ingester:
+    zoneAwareReplication:
+      enabled: false
+
+  store_gateway:
+    zoneAwareReplication:
+      enabled: false
+
+  minio:
+    enabled: true
+
+  admin-cache:
+    enabled: false
+
+  chunks-cache:
+    enabled: false
+
+  index-cache:
+    enabled: false
+
+  metadata-cache:
+    enabled: false
+
+  results-cache:
+    enabled: false
+
+  nginx:
+    enabled: true
+    replicas: 1
+
+  gateway:
+    enabled: false
+
+  kafka:
+    enabled: false
+
+  rollout_operator:
+    enabled: false
+
+  mimir:
+    structuredConfig:
+      ingester:
+        push_grpc_method_enabled: true
+        ring:
+          replication_factor: 1
+
+      ingest_storage:
+        enabled: false
+
+      alertmanager:
+        sharding_ring:
+          replication_factor: 2
+
+      store_gateway:
+        sharding_ring:
+          replication_factor: 1
+
+  metaMonitoring:
+    enabled: true
+    dashboards:
+      enabled: false
+      # annotations:
+      #   "helm.sh/hook"              : "pre-install"
+      #   "helm.sh/hook-weight"       : "-1"
+      #   "helm.sh/hook-delete-policy": "before-hook-creation"
+      #
+
+    serviceMonitor:
+      enabled: true
