@@ -1,5 +1,6 @@
-app: 
-  clusterName: "my-cluster"
+app:
+  settings: 
+    clusterName: "my-cluster"
 # AWS node classes example:
   nodeClasses:
     default:
@@ -27,4 +28,16 @@ app:
       instanceCpus: [2, 4, 8]
       limits:
         cpu: 200
-        memory: "500Gi"
+        memory: 500
+      disruption:
+        consolidationPolicy: "WhenEmptyOrUnderutilized"
+        consolidateAfter: "1m"
+        budgets:
+          - nodes: "15%"
+          - nodes: "3"
+          - nodes: "0"
+            schedule: "0 9 * * sat-sun"
+            duration: "24h"
+          - nodes: "0"
+            schedule: "0 17 * * mon-fri"
+            duration: "16h"

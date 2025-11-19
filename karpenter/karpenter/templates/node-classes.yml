@@ -5,31 +5,31 @@ kind: EC2NodeClass
 metadata:
   name: {{ printf "%s-node-class" $name }}
   labels:
-    {{- include "karpenter.labels" . | nindent 4 }}
+    {{- include "karpenter.labels" $ | nindent 4 }}
 spec:
   kubelet:
     podsPerCore: {{ default 25 $nc.podsPerCore }}
     maxPods: {{ default 110 $nc.maxPods }}
     systemReserved:
-      cpu: {{ default "100m" $nc.systemReserved.cpu }}
-      memory: {{ default "100Mi" $nc.systemReserved.memory }}
-      ephemeral-storage: {{ default "1Gi" $nc.systemReserved.ephemeralStorage }}
+      cpu: {{ if $nc.systemReserved }}{{ $nc.systemReserved.cpu | default "100m" }}{{ else }}100m{{ end }}
+      memory: {{ if $nc.systemReserved }}{{ $nc.systemReserved.memory | default "100Mi" }}{{ else }}100Mi{{ end }}
+      ephemeral-storage: {{ if $nc.systemReserved }}{{ $nc.systemReserved.ephemeralStorage | default "1Gi" }}{{ else }}1Gi{{ end }}
     kubeReserved:
-      cpu: {{ default "200m" $nc.kubeReserved.cpu }}
-      memory: {{ default "100Mi" $nc.kubeReserved.memory }}
-      ephemeral-storage: {{ default "3Gi" $nc.kubeReserved.ephemeralStorage }}
+      cpu: {{ if $nc.kubeReserved }}{{ $nc.kubeReserved.cpu | default "200m" }}{{ else }}200m{{ end }}
+      memory: {{ if $nc.kubeReserved }}{{ $nc.kubeReserved.memory | default "100Mi" }}{{ else }}100Mi{{ end }}
+      ephemeral-storage: {{ if $nc.kubeReserved }}{{ $nc.kubeReserved.ephemeralStorage | default "3Gi" }}{{ else }}3Gi{{ end }}
     evictionHard:
-      memory.available: {{ default "5%" $nc.evictionHard.memory.available }}
-      nodefs.available: {{ default "10%" $nc.evictionHard.nodefs.available }}
-      nodefs.inodesFree: {{ default "10%" $nc.evictionHard.nodefs.inodesFree }}
+      memory.available: {{ if $nc.evictionHard }}{{ $nc.evictionHard.memory.available | default "5%" }}{{ else }}5%{{ end }}
+      nodefs.available: {{ if $nc.evictionHard }}{{ $nc.evictionHard.nodefs.available | default "10%" }}{{ else }}10%{{ end }}
+      nodefs.inodesFree: {{ if $nc.evictionHard }}{{ $nc.evictionHard.nodefs.inodesFree | default "10%" }}{{ else }}10%{{ end }}
     evictionSoft:
-      memory.available: {{ default "500Mi" $nc.evictionSoft.memory.available }}
-      nodefs.available: {{ default "15%" $nc.evictionSoft.nodefs.available }}
-      nodefs.inodesFree: {{ default "15%" $nc.evictionSoft.nodefs.inodesFree }}
+      memory.available: {{ if $nc.evictionSoft }}{{ $nc.evictionSoft.memory.available | default "500Mi" }}{{ else }}500Mi{{ end }}
+      nodefs.available: {{ if $nc.evictionSoft }}{{ $nc.evictionSoft.nodefs.available | default "15%" }}{{ else }}15%{{ end }}
+      nodefs.inodesFree: {{ if $nc.evictionSoft }}{{ $nc.evictionSoft.nodefs.inodesFree | default "15%" }}{{ else }}15%{{ end }}
     evictionSoftGracePeriod: 
-      memory.available: {{ default "1m" $nc.evictionSoftGracePeriod.memory.available }}
-      nodefs.available: {{ default "1m30s" $nc.evictionSoftGracePeriod.nodefs.available }}
-      nodefs.inodesFree: {{ default "2m" $nc.evictionSoftGracePeriod.nodefs.inodesFree }}
+      memory.available: {{ if $nc.evictionSoftGracePeriod }}{{ $nc.evictionSoftGracePeriod.memory.available | default "1m" }}{{ else }}1m{{ end }}
+      nodefs.available: {{ if $nc.evictionSoftGracePeriod }}{{ $nc.evictionSoftGracePeriod.nodefs.available | default "1m30s" }}{{ else }}1m30s{{ end }}
+      nodefs.inodesFree: {{ if $nc.evictionSoftGracePeriod }}{{ $nc.evictionSoftGracePeriod.nodefs.inodesFree | default "2m" }}{{ else }}2m{{ end }}
     evictionMaxPodGracePeriod: {{ default "60" $nc.evictionMaxPodGracePeriod }}
     imageGCHighThresholdPercent: {{ default "85" $nc.imageGCHighThresholdPercent }}
     imageGCLowThresholdPercent: {{ default "80" $nc.imageGCLowThresholdPercent }}
@@ -52,7 +52,7 @@ spec:
       {{- end }}
     {{- else }}
       - tags:
-          kubernetes.io/cluster/{{ $.Values.app.clusterName }}: owned
+          kubernetes.io/cluster/{{ $.Values.app.settings.clusterName }}: owned
     {{- end }}
   role: {{ $nc.role }}
   amiSelectorTerms:
