@@ -44,6 +44,9 @@ app:
   rollout_operator:
     enabled: false
 
+  runtimeConfig:
+    out_of_order_time_window: 72h
+
   mimir:
     structuredConfig:
       limits:
@@ -54,10 +57,9 @@ app:
 
       query_scheduler:
         max_outstanding_requests_per_tenant: 10000
-
+      
       ingester:
         push_grpc_method_enabled: true
-        out_of_order_time_window: 72h
         ring:
           replication_factor: 1
 
