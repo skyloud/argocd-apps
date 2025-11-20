@@ -45,7 +45,8 @@ app:
     enabled: false
 
   runtimeConfig:
-    out_of_order_time_window: 72h
+    limits:
+      out_of_order_time_window: 72h
 
   mimir:
     structuredConfig:
