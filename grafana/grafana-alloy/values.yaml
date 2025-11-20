@@ -1,6 +1,7 @@
 app:
-  mounts:
-    dockercontainers: true
-    varlog: true
-  serviceMonitor:
-    enabled: true
+  alloy:
+    mounts:
+      dockercontainers: true
+      varlog: true
+    serviceMonitor:
+      enabled: true
