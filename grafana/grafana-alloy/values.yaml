@@ -1,11 +1,6 @@
 app:
-  alloy:
-    controller:
-      nodeSelector:
-        kubernetes.io/os: linux
-      tolerations: []
-    mounts:
-      dockercontainers: true
-      varlog: true
-    serviceMonitor:
-      enabled: true
+  mounts:
+    dockercontainers: true
+    varlog: true
+  serviceMonitor:
+    enabled: true
