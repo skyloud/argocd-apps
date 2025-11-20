@@ -1,6 +1,6 @@
 apiVersion: v2
 name: grafana
-version: 10.1.0
+version: 10.1.2
 type: application
 dependencies:
   - name: grafana
