@@ -26,7 +26,7 @@ app:
           valid_status_codes: [401]
 
   serviceMonitor:
-    enabled: ${local.blackbox_exporter["service_monitor"]}
+    enabled: true
 
     selfMonitor:
       enabled: true

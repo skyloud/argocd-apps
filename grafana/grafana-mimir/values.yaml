@@ -72,7 +72,7 @@ app:
 
       query_scheduler:
         max_outstanding_requests_per_tenant: 10000
-      
+
       ingester:
         push_grpc_method_enabled: true
         ring:
