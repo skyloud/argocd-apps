@@ -1,85 +1,103 @@
 app:
-  admin-cache:
-    enabled: false
-######## Keep ? Extra values in mimir configuration#########
-  alertmanager:
-    fallbackConfig: |
-      global:
-        resolve_timeout: 5m
-      receivers:
-      - name: null
-      - name: betteruptime_heartbeat
-        webhook_configs:
-        - url: https://uptime.betterstack.com/api/v1/heartbeat/qWruW3ywm25JmeEuGXKG4py3
-      - name: betteruptime_webhook
-        webhook_configs:
-        - url: https://uptime.betterstack.com/api/v1/prometheus/webhook/TKxPashrf128y5pDznn6p5KP
-      - name: skyloud
-        webhook_configs:
-        - send_resolved: true
-          url: https://c582a210-3a5c-488e-9e61-f2d9f75ecbfa.skyloud.net/v1/alerts/6892a5681685fd04a9c4188a/SKYVNKJ0DF6EI34NXGT6
-      route:
-        group_by:
-        - alertname
-        group_interval: 1m
-        group_wait: 30s
-        receiver: null
-        repeat_interval: 1h
-        routes:
-        - matchers:
-          - alertname=Watchdog
-          receiver: betteruptime_heartbeat
-          repeat_interval: 1m
-        - matchers:
-          - alertowner=skyloud
-          receiver: betteruptime_webhook
-          repeat_interval: 15m
-    replicas: 1
-###############################################
-  chunks-cache:
-    enabled: false
-  gateway:
-    enabled: false
   global:
-    dnsService: coredns
-  index-cache:
-    enabled: false
+    dnsService: "coredns"
+
+  alertmanager:
+    replicas: 0
+
   ingester:
     zoneAwareReplication:
       enabled: false
-  kafka:
-    enabled: false
-  metaMonitoring:
-    dashboards:
+
+  store_gateway:
+    zoneAwareReplication:
       enabled: false
+
+  minio:
     enabled: true
-    serviceMonitor:
-      enabled: true
+
+  admin-cache:
+    enabled: false
+
+  chunks-cache:
+    enabled: false
+
+  index-cache:
+    enabled: false
+
   metadata-cache:
     enabled: false
+
+  results-cache:
+    enabled: false
+
+  nginx:
+    enabled: true
+    replicas: 1
+
+  gateway:
+    enabled: false
+
+  kafka:
+    enabled: false
+
+  rollout_operator:
+    enabled: false
+
   mimir:
     structuredConfig:
-      alertmanager:
-        sharding_ring:
-          replication_factor: 2
-      ingest_storage:
-        enabled: false
+      limits:
+        max_total_query_length: 8760h
+        out_of_order_time_window: 72h
+        max_query_parallelism: 240
+        query_sharding_max_sharded_queries: 256
+        query_sharding_total_shards: 24
+        store_gateway_tenant_shard_size: 2
+        max_cache_freshness: 10m
+        compactor_block_upload_enabled: true
+        compactor_blocks_retention_period: 14d
+        compactor_partial_block_deletion_delay: 1d
+        compactor_split_and_merge_shards: 2
+        compactor_tenant_shard_size: 2
+        ingestion_burst_size: 4000000
+        ingestion_rate: 100000
+        ingestion_tenant_shard_size: 2
+        max_fetched_chunks_per_query: 3000000
+        max_global_series_per_metric: 500000
+        max_global_series_per_user: 1000000
+        max_label_names_per_series: 100
+
+      server:
+        log_level: warn
+
+      query_scheduler:
+        max_outstanding_requests_per_tenant: 10000
+      
       ingester:
         push_grpc_method_enabled: true
         ring:
           replication_factor: 1
+
+      ingest_storage:
+        enabled: false
+
+      alertmanager:
+        sharding_ring:
+          replication_factor: 2
+
       store_gateway:
         sharding_ring:
           replication_factor: 1
-  minio:
+
+  metaMonitoring:
     enabled: true
-  nginx:
-    enabled: true
-    replicas: 1
-  results-cache:
-    enabled: false
-  rollout_operator:
-    enabled: false
-  store_gateway:
-    zoneAwareReplication:
+    dashboards:
       enabled: false
+      # annotations:
+      #   "helm.sh/hook"              : "pre-install"
+      #   "helm.sh/hook-weight"       : "-1"
+      #   "helm.sh/hook-delete-policy": "before-hook-creation"
+      #
+
+    serviceMonitor:
+      enabled: true

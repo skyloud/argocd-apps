@@ -1,0 +1,55 @@
+app:
+  deploymentMode: "SingleBinary"
+  loki:
+    commonConfig:
+      replication_factor: 1
+
+    storage:
+      type: "filesystem"
+
+    schemaConfig:
+      configs:
+        - from: "2024-04-01"
+          object_store: "filesystem"
+          store: "tsdb"
+          schema: "v13"
+          index:
+            prefix: "index_"
+            period: "24h"
+
+  write:
+    replicas: 0
+
+  read:
+    replicas: 0
+
+  backend:
+    replicas: 0
+
+  resultsCache:
+    enabled: false
+
+  chunksCache:
+    enabled: false
+
+  singleBinary:
+    replicas: 1
+    nodeSelector: {}
+    tolerations: []
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 95
+      targetMemoryUtilizationPercentage: 80
+
+    resources:
+      limits:
+        memory: "2Gi"
+
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+
+    persistence:
+      enableStatefulSetAutoDeletePVC: true

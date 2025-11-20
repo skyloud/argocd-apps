@@ -1,0 +1,10 @@
+apiVersion: v2
+name: tailscale-operator
+version: 1.90.6
+type: application
+
+dependencies:
+  - name: tailscale-operator
+    version: ~1.90.6
+    repository: "https://pkgs.tailscale.com/helmcharts"
+    alias: app

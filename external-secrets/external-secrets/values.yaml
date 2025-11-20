@@ -1,0 +1,55 @@
+app:
+  service_account:
+    name: external-secrets
+  resources:
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+  provider: aws
+  region: eu-west-3
+
+  secretStores: {}
+# Example AWS
+  # foobar:
+  #   name: foobar
+  #   kind: SecretStore
+  #   namespace: default
+  #   region: eu-west-3
+  #   role: arn:aws:iam::123456789012:role/some-secrets-role # Optional, if not provided, the main ESO role will be used
+  #   secrets:
+  #     - name: k8s-secret-name-to-create
+  #       key: provider-secret-name
+  #       template: Opaque
+  #       refresh_interval: 1h
+
+# Example GitLab
+  # foobar:
+  #   name: foobar
+  #   kind: SecretStore
+  #   namespace: default
+  #   url: https://gitlab.com
+  #   project_id: 1234567890
+  #   group_ids: 1234567890
+  #   inherit_from_groups: false
+  #   environment: development
+  #   secret_name: gitlab-token # optional
+  #   secret_key: token # optional
+  #   secrets:
+  #     ...
+
+# Example Scaleway
+  # foobar:
+  #   name: foobar
+  #   region: fr-par
+  #   kind: SecretStore
+  #   namespace: default
+  #   project_id: 1234567890
+  #   secret_name: scw-secret-manager-api
+  #   access_key: access_key # optional
+  #   secret_key: secret_key # optional
+  #   secrets:
+  #     - ...

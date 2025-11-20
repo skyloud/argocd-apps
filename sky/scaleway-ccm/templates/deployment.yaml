@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaleway-cloud-controller-manager
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scaleway-cloud-controller-manager
+  revisionHistoryLimit: 2
+  template:
+    metadata:
+      labels:
+        app: scaleway-cloud-controller-manager
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      dnsPolicy: Default
+      hostNetwork: true
+      serviceAccountName: cloud-controller-manager
+      tolerations:
+        # we sould allow to schedule on uninitialized and master nodes
+        - key: "node.cloudprovider.kubernetes.io/uninitialized"
+          value: "true"
+          effect: "NoSchedule"
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"
+        - key: "node-role.kubernetes.io/master"
+          effect: NoSchedule
+      containers:
+        - name: scaleway-cloud-controller-manager
+          image: scaleway/scaleway-cloud-controller-manager:v0.34.3
+          imagePullPolicy: Always
+          args:
+            - --cloud-provider=scaleway
+            - --leader-elect=true
+            - --allow-untagged-cloud
+          resources:
+            requests:
+              cpu: 100m
+              memory: 50Mi
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secretName }}
