@@ -1,0 +1,43 @@
+app:
+  secretConfig: true
+  config:
+    modules:
+      tcp:
+        prober: tcp
+        tcp:
+          ip_protocol_fallback: true
+          preferred_ip_protocol: "ip4"
+      icmp:
+        prober: icmp
+        icmp:
+          ttl: 64
+          preferred_ip_protocol: "ip4"
+          ip_protocol_fallback: true
+      http_2xx:
+        prober: http
+        timeout: 30s
+        http:
+          valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+          follow_redirects: true
+          preferred_ip_protocol: "ip4"
+      http_401:
+        prober: http
+        http:
+          valid_status_codes: [401]
+
+  serviceMonitor:
+    enabled: ${local.blackbox_exporter["service_monitor"]}
+
+    selfMonitor:
+      enabled: true
+      interval: 60s
+
+    defaults:
+      additionalMetricsRelabels: {}
+      additionalRelabeling: []
+      labels:
+        alertowner: skyloud
+        severity: critical
+      interval: 60s
+      scrapeTimeout: 30s
+      module: http_2xx
