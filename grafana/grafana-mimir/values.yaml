@@ -9,6 +9,9 @@ app:
     zoneAwareReplication:
       enabled: false
 
+    persistentVolume:
+      size: 20Gi
+
   store_gateway:
     zoneAwareReplication:
       enabled: false
