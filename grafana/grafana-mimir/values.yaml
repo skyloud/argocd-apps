@@ -44,14 +44,28 @@ app:
   rollout_operator:
     enabled: false
 
-  runtimeConfig:
-    limits:
-      out_of_order_time_window: 72h
-
   mimir:
     structuredConfig:
       limits:
-        max_global_series_per_user: 2000000
+        max_total_query_length: 30m
+        out_of_order_time_window: 72h
+        max_query_parallelism: 240
+        query_sharding_max_sharded_queries: 256
+        query_sharding_total_shards: 24
+        store_gateway_tenant_shard_size: 2
+        max_cache_freshness: 10m
+        compactor_block_upload_enabled: true
+        compactor_blocks_retention_period: 14d
+        compactor_partial_block_deletion_delay: 1d
+        compactor_split_and_merge_shards: 2
+        compactor_tenant_shard_size: 2
+        ingestion_burst_size: 4000000
+        ingestion_rate: 100000
+        ingestion_tenant_shard_size: 2
+        max_fetched_chunks_per_query: 3000000
+        max_global_series_per_metric: 500000
+        max_global_series_per_user: 1000000
+        max_label_names_per_series: 100
 
       server:
         log_level: warn
