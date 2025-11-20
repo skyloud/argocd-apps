@@ -47,7 +47,7 @@ app:
   mimir:
     structuredConfig:
       limits:
-        max_total_query_length: 30m
+        max_total_query_length: 8760h
         out_of_order_time_window: 72h
         max_query_parallelism: 240
         query_sharding_max_sharded_queries: 256
