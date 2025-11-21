@@ -34,7 +34,7 @@ spec:
     imageGCHighThresholdPercent: {{ default "85" $nc.imageGCHighThresholdPercent }}
     imageGCLowThresholdPercent: {{ default "80" $nc.imageGCLowThresholdPercent }}
     cpuCFSQuota: {{ default true $nc.cpuCFSQuota }}
-  amiFamily: {{ $nc.amiFamily }}
+  amiFamily: {{ default $.Values.defaultAMIFamily $nc.amiFamily }}
   subnetSelectorTerms:
     {{- range $index, $subnet := $nc.subnetIds }}
     - id: {{ $subnet }}
@@ -71,15 +71,33 @@ spec:
     {{- range $index, $blockDeviceMapping := $nc.blockDeviceMappings }}
     - deviceName: {{ $blockDeviceMapping.deviceName }}
       ebs:
+        {{- if $blockDeviceMapping.ebs.volumeSize }}
         volumeSize: {{ $blockDeviceMapping.ebs.volumeSize }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.volumeType }}
         volumeType: {{ $blockDeviceMapping.ebs.volumeType }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.iops }}
         iops: {{ $blockDeviceMapping.ebs.iops }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.encrypted }}
         encrypted: {{ $blockDeviceMapping.ebs.encrypted }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.kmsKeyID }}
         kmsKeyID: {{ $blockDeviceMapping.ebs.kmsKeyID }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.deleteOnTermination }}
         deleteOnTermination: {{ $blockDeviceMapping.ebs.deleteOnTermination }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.throughput }}
         throughput: {{ $blockDeviceMapping.ebs.throughput }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.snapshotID }}
         snapshotID: {{ $blockDeviceMapping.ebs.snapshotID }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.volumeInitializationRate }}
         volumeInitializationRate: {{ $blockDeviceMapping.ebs.volumeInitializationRate }}
+        {{- end }}
     {{- end }}
   {{- end }}
   {{- if $nc.userData }}

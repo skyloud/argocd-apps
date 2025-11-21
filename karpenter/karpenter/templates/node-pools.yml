@@ -86,9 +86,15 @@ spec:
         {{- end }}
       {{- end }}
   limits:
-    cpu: {{ default 1000 $np.limits.cpu | quote }}
-    memory: {{ printf "%dGi" (int (default 1000 $np.limits.memory)) }}
-    nvidia.com/gpu: {{ default 0 $np.limits.gpu }}
+    {{- if $np.limits.cpu }}
+    cpu: {{ $np.limits.cpu | quote }}
+    {{- end }}
+    {{- if $np.limits.memory }}
+    memory: {{ printf "%dGi" (int $np.limits.memory) }}
+    {{- end }}
+    {{- if $np.limits.gpu }}
+    nvidia.com/gpu: {{ $np.limits.gpu }}
+    {{- end }}
   disruption:
     consolidationPolicy: {{ default "WhenEmptyOrUnderutilized" $np.disruption.consolidationPolicy }}
     consolidateAfter: {{ default "1m" $np.disruption.consolidateAfter }}

@@ -1,10 +1,12 @@
+defaultAMIFamily: "Bottlerocket"
+
 app:
   settings: 
     clusterName: "my-cluster"
 # AWS node classes example:
   nodeClasses:
     # default:
-    #   amiFamily: "bottlerocket"
+    #   amiFamily: "Bottlerocket"
     #   role: "arn:aws:iam::123456789012:role/KarpenterNodeRole"
     #   subnetIds:
     #     - "subnet-01234567890123456"
