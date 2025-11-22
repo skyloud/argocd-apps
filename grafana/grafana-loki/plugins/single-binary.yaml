@@ -4,18 +4,25 @@ app:
     commonConfig:
       replication_factor: 1
 
-    storage:
-      type: "filesystem"
-
     schemaConfig:
       configs:
         - from: "2024-04-01"
-          object_store: "filesystem"
-          store: "tsdb"
-          schema: "v13"
+          store: tsdb
+          object_store: s3
+          schema: v13
           index:
-            prefix: "index_"
-            period: "24h"
+            prefix: loki_index_
+            period: 24h
+
+    pattern_ingester:
+      enabled: true
+
+    limits_config:
+      allow_structured_metadata: true
+      volume_enabled: true
+
+    ruler:
+      enable_api: true
 
   write:
     replicas: 0
@@ -24,6 +31,33 @@ app:
     replicas: 0
 
   backend:
+    replicas: 0
+
+  ingester:
+    replicas: 0
+
+  querier:
+    replicas: 0
+
+  queryFrontend:
+    replicas: 0
+
+  queryScheduler:
+    replicas: 0
+
+  distributor:
+    replicas: 0
+
+  compactor:
+    replicas: 0
+
+  indexGateway:
+    replicas: 0
+
+  bloomCompactor:
+    replicas: 0
+
+  bloomGateway:
     replicas: 0
 
   resultsCache:
