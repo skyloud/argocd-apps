@@ -25,6 +25,7 @@ app:
       max_query_parallelism: 32
       ingestion_rate_mb: 20
       ingestion_burst_size_mb: 100
+      volume_enabled: true
 
   monitoring:
     serviceMonitor:
