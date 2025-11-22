@@ -23,6 +23,8 @@ app:
       max_cache_freshness_per_query: "10m"
       split_queries_by_interval: "30m"
       max_query_parallelism: 32
+      ingestion_rate_mb: 20
+      ingestion_burst_size_mb: 100
 
   monitoring:
     serviceMonitor:
