@@ -71,35 +71,13 @@
       }
     ]
   },
-  "description": "【English version】2025.01.25 Updates，kubernetesComprehensive display of resources！Includes K8S Overall Resource Overview、Microservices Resource Details、Pod Resource Details andK8SNetwork Bandwidth，Optimization metrics。https://grafana.com/orgs/starsliao/dashboards",
+  "description": "Kubernetes Cluster Global Overview Dashboard",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "gnetId": 15661,
   "graphTooltip": 0,
-  "id": null,
-  "links": [
-    {
-      "icon": "bolt",
-      "tags": [],
-      "targetBlank": true,
-      "title": "Update",
-      "tooltip": "See more dashboards",
-      "type": "link",
-      "url": "https://grafana.com/orgs/starsliao/dashboards"
-    },
-    {
-      "$$hashKey": "object:831",
-      "icon": "question",
-      "tags": [
-        "node_exporter"
-      ],
-      "targetBlank": true,
-      "title": "GitHub",
-      "tooltip": "View more dashboards",
-      "type": "link",
-      "url": "https://github.com/starsliao"
-    }
-  ],
+  "uid": "k8s_global_dashboard",
+  "links": [],
   "liveNow": false,
   "panels": [
     {
@@ -6756,6 +6734,6 @@
     ]
   },
   "timezone": "browser",
-  "title": "K8S Dashboard",
+  "title": "Kubernetes / Global Dashboard",
   "version": 8
 }
