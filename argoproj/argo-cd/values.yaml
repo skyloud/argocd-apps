@@ -1,4 +1,7 @@
 app:
+  global:
+    networkPolicy:
+      create: true
   crds:
     install: true
   namespaceOverride: argocd
