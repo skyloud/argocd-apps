@@ -1,5 +1,0 @@
-{{- (.Files.Get "manifests/network-policy-cert-manager.yaml") | nindent 0 }}
----
-{{- (.Files.Get "manifests/network-policy-metadata-api.yaml") | nindent 0 }}
----
-{{- (.Files.Get "manifests/network-policy-ingress.yaml") | nindent 0 }}
