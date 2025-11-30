@@ -921,7 +921,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Blackbox Exporter (HTTP prober)",
-  "uid": "NEzutrbMk",
-  "version": 15
+  "title": "Blackbox / Http Prober Overview",
+  "uid": "blackbox-http-prober",
+  "version": 1
 }

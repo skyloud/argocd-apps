@@ -1977,11 +1977,9 @@
   "schemaVersion": 27,
   "style": "dark",
   "tags": [
-    "ingress",
-    "nginx",
-    "networking",
-    "services",
-    "k8s"
+    "Networking",
+    "Ingress",
+    "Nginx"
   ],
   "templating": {
     "list": [
@@ -2175,8 +2173,8 @@
     ]
   },
   "timezone": "",
-  "title": "Kubernetes Nginx Ingress Prometheus NextGen",
-  "description": "Nginx Ingress Controller via Prometheus Metrics Dashboard created for DevOps Nirvana @ https://github.com/DevOps-Nirvana",
-  "uid": "k8s-nginx-ingress-prometheus-ng",
-  "version": 27
+  "title": "Nginx / Ingress Controller Overview",
+  "description": "Ngingx Ingress Controller dashboard for Kubernetes with Prometheus as data source",
+  "uid": "nginx-ingress-controller",
+  "version": 1
 }
