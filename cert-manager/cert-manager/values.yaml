@@ -8,6 +8,8 @@ app:
   installCRDs: true
   prometheus:
     enabled: true
+    servicemonitor:
+      enabled: true
   config:
     featureGates:
       ACMEHTTP01IngressPathTypeExact: false
