@@ -1,0 +1,3 @@
+{{- (.Files.Get "manifests/argocd-cmp-plugin-helm.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/argocd-cmp-plugin-k8s.yaml") | nindent 0 }}
