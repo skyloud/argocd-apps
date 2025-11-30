@@ -12,8 +12,8 @@
       "includeVars": false,
       "keepTime": true,
       "tags": [
-        "ci/cd",
-        "argo-cd"
+        "ArgoCD",
+        "Prometheus"
       ],
       "targetBlank": true,
       "title": "ArgoCD",

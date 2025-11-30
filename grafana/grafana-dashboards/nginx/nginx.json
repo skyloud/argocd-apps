@@ -1977,9 +1977,8 @@
   "schemaVersion": 27,
   "style": "dark",
   "tags": [
-    "Networking",
-    "Ingress",
-    "Nginx"
+    "Nginx",
+    "Prometheus"
   ],
   "templating": {
     "list": [
@@ -2175,6 +2174,6 @@
   "timezone": "",
   "title": "Nginx / Ingress Controller Overview",
   "description": "Ngingx Ingress Controller dashboard for Kubernetes with Prometheus as data source",
-  "uid": "nginx-ingress-controller",
+  "uid": "nginx-ingress-controller-overview",
   "version": 1
 }

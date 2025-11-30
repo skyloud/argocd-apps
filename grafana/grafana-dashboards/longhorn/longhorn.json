@@ -2417,7 +2417,10 @@
   ],
   "refresh": "",
   "schemaVersion": 40,
-  "tags": [],
+  "tags": [
+    "Longhorn",
+    "Prometheus"
+  ],
   "templating": {
     "list": [
       {
@@ -2446,8 +2449,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Longhorn Global Overview",
-  "uid": "cea6emq4o8zy8c",
+  "title": "Longhorn / Global Overview",
+  "uid": "longhorn-global-overview",
   "version": 2,
   "weekStart": "",
   "gnetId": 22705,

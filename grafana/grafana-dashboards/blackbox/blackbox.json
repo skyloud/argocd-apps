@@ -844,8 +844,8 @@
   "schemaVersion": 26,
   "style": "dark",
   "tags": [
-    "blackbox",
-    "prometheus"
+    "Blackbox",
+    "Prometheus"
   ],
   "templating": {
     "list": [
