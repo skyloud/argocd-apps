@@ -19,6 +19,8 @@ app:
     dashboards:
       enabled: false
       folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
     datasources:
       enabled: false
     notifiers:

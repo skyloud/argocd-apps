@@ -1287,7 +1287,7 @@
     "to": "now"
   },
   "timezone": "utc",
-  "title": "ArgoCD / Operational / Overview",
-  "uid": "argo-cd-operational-overview-kask",
+  "title": "ArgoCD / Global Overview",
+  "uid": "argo-cd-global-overview",
   "gnetId": 19993
 }
