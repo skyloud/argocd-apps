@@ -1,15 +1,15 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: instance-manager-grafana-alloy
+  name: longhorn-manager-grafana-alloy
 spec:
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: system-grafana-alloy
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: system-grafana-alloy
   podSelector:
     matchLabels:
-      longhorn.io/component: instance-manager
+      app: longhorn-manager
   policyTypes:
-  - Ingress
+    - Ingress
