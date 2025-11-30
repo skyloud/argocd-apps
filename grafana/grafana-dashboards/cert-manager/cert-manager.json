@@ -89,7 +89,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "count(certmanager_certificate_ready_status{condition=\"True\", cluster=~\"$cluster\", exported_namespace=~\"$namespace\"})",
+          "expr": "count(certmanager_certificate_ready_status{condition=\"True\", env=~\"$env\", exported_namespace=~\"$namespace\"})",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": true,
@@ -166,7 +166,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "count(certmanager_certificate_expiration_timestamp_seconds{cluster=~\"$cluster\", exported_namespace=~\"$namespace\"} < (time()+(14*24*3600)))",
+          "expr": "count(certmanager_certificate_expiration_timestamp_seconds{env=~\"$env\", exported_namespace=~\"$namespace\"} < (time()+(14*24*3600)))",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": true,
@@ -240,7 +240,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(increase(certmanager_http_acme_client_request_count{cluster=~\"$cluster\"}[$__range]))",
+          "expr": "sum(increase(certmanager_http_acme_client_request_count{env=~\"$env\"}[$__range]))",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": true,
@@ -331,7 +331,7 @@
           "format": "time_series",
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster}} - {{exported_namespace}} - {{name}}",
+          "legendFormat": "{{env}} - {{exported_namespace}} - {{name}}",
           "range": false,
           "refId": "A"
         }
@@ -404,7 +404,7 @@
           "format": "time_series",
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster}} - {{exported_namespace}} - {{name}}",
+          "legendFormat": "{{env}} - {{exported_namespace}} - {{name}}",
           "range": false,
           "refId": "A"
         }
@@ -500,7 +500,7 @@
           "expr": "(certmanager_certificate_expiration_timestamp_seconds{exported_namespace=~\"$namespace\"} - time())/(24*3600)",
           "instant": false,
           "interval": "",
-          "legendFormat": "{{cluster}} - {{exported_namespace}} - {{name}}",
+          "legendFormat": "{{env}} - {{exported_namespace}} - {{name}}",
           "range": true,
           "refId": "A"
         }
@@ -596,11 +596,11 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "changes(certmanager_certificate_renewal_timestamp_seconds{cluster=~\"$cluster\", exported_namespace=~\"$namespace\"}[15m]) > 0",
+          "expr": "changes(certmanager_certificate_renewal_timestamp_seconds{env=~\"$env\", exported_namespace=~\"$namespace\"}[15m]) > 0",
           "format": "time_series",
           "instant": false,
           "interval": "",
-          "legendFormat": "{{cluster}} - {{exported_namespace}} - {{name}}",
+          "legendFormat": "{{env}} - {{exported_namespace}} - {{name}}",
           "range": false,
           "refId": "A"
         }
@@ -693,19 +693,19 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sort_desc(sum by (cluster)(increase(certmanager_http_acme_client_request_count{cluster=~\"$cluster\"}[$__range]))) > 0",
+          "expr": "sort_desc(sum by (env)(increase(certmanager_http_acme_client_request_count{env=~\"$env\"}[$__range]))) > 0",
           "format": "table",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster}}",
+          "legendFormat": "{{env}}",
           "range": false,
           "refId": "A",
           "useBackend": false
         }
       ],
-      "title": "ACME Requests by Cluster",
+      "title": "ACME Requests by Environment",
       "type": "barchart"
     }
   ],
@@ -744,14 +744,14 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(certmanager_clock_time_seconds, cluster)",
+        "definition": "label_values(certmanager_clock_time_seconds, env)",
         "hide": 0,
         "includeAll": true,
         "multi": false,
-        "name": "cluster",
+        "name": "env",
         "options": [],
         "query": {
-          "query": "label_values(certmanager_clock_time_seconds, cluster)",
+          "query": "label_values(certmanager_clock_time_seconds, env)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -771,14 +771,14 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(certmanager_certificate_ready_status{cluster=~\"$cluster\"}, exported_namespace)",
+        "definition": "label_values(certmanager_certificate_ready_status{env=~\"$env\"}, exported_namespace)",
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "name": "namespace",
         "options": [],
         "query": {
-          "query": "label_values(certmanager_certificate_ready_status{cluster=~\"$cluster\"}, exported_namespace)",
+          "query": "label_values(certmanager_certificate_ready_status{env=~\"$env\"}, exported_namespace)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
