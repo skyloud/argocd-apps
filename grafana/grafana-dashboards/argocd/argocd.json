@@ -1193,8 +1193,8 @@
   ],
   "schemaVersion": 39,
   "tags": [
-    "ci/cd",
-    "argo-cd"
+    "ArgoCD",
+    "Prometheus"
   ],
   "templating": {
     "list": [
