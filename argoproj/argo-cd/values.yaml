@@ -5,10 +5,28 @@ app:
   server:
     service:
       type: ClusterIP
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
   ingress:
     enabled: false
+  repoServer:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+  redis:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
   dex:
     enabled: true
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
   configs:
     params:
       create: true
