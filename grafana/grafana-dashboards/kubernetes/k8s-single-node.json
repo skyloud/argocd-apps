@@ -5636,6 +5636,24 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
         "current": {},
         "datasource": {
           "type": "prometheus",
@@ -5905,7 +5923,7 @@
     ]
   },
   "timezone": "browser",
-  "title": "Single Node Overview",
+  "title": "Kubernetes / Single Node Overview",
   "uid": "k8s-single-node",
   "version": 5,
   "weekStart": ""
