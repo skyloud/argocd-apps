@@ -12,3 +12,6 @@ configMapGenerator:
 
   - name: dashboard-k8s-system-coredns
     files: [k8s-system-coredns.json]
+
+  - name: dashboard-k8s-single-node
+    files: [k8s-single-node.json]
