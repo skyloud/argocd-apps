@@ -14,7 +14,7 @@ spec:
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: No PV usage metrics
 
         - alert: HighPersistentVolumeUsage
@@ -26,7 +26,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value }}% full
 
         - alert: LowInodes
@@ -38,7 +38,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has {{ $value }} < 50k inodes available
 
         - alert: PVError
@@ -50,5 +50,5 @@ spec:
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $labels.phase }}

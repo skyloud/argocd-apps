@@ -14,7 +14,7 @@ spec:
         severity: critical
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: Certificate {{ $labels.name }} is not ready
 
     - alert: CertificateExpiringSoon
@@ -25,7 +25,7 @@ spec:
         severity: warning
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: Certificate {{ $labels.name }} expires in less than 7 days
 
     - alert: CertificateRenewalFailed
@@ -36,5 +36,5 @@ spec:
         severity: critical
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: Certificate {{ $labels.name }} renewal has failed

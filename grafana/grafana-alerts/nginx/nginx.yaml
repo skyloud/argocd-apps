@@ -15,7 +15,7 @@ spec:
         severity: high
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: "TLS certificate expires in less than 7 days for {{ $labels.host }}"
 
     - alert: MoreThanFive5xxIn10Mins
@@ -35,7 +35,7 @@ spec:
         severity: medium
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: "{{ $value }} HTTP 5xx in 10mins for {{ $labels.ingress }} (3x higher than usual)"
 
     - alert: HighErrorRate5xx
@@ -50,7 +50,7 @@ spec:
         severity: high
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: High error rate 5xx for {{ $labels.ingress }} (success {{ $value }}% < 95%)
 
     - alert: HighErrorCount401
@@ -63,7 +63,7 @@ spec:
         severity: high
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: "{{ $value }} HTTP 401 in 10m for {{ $labels.ingress }}"
     
     - alert: HighErrorCount403
@@ -76,7 +76,7 @@ spec:
         severity: high
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: "{{ $value }} HTTP 403 in 10m for {{ $labels.ingress }}"
 
     - alert: HighLatency90p20s
@@ -96,5 +96,5 @@ spec:
         severity: high
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
+        env: "{{ $labels.env }}"
         summary: "Latency P90 is {{ $value }}s for {{ $labels.ingress }}"

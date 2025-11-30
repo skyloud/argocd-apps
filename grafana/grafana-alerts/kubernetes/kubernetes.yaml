@@ -15,7 +15,7 @@ spec:
             severity: medium
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Different semantic versions of Kubernetes components running
     # Requires kube-state-metrics
     - name: kubernetes-nodes
@@ -28,7 +28,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Node {{ $labels.instance }} is not ready
 
         - alert: KubernetesNodeDiskPressure
@@ -39,7 +39,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Node {{ $labels.instance }} is DiskPressure
 
         - alert: KubernetesNodeMemoryPressure
@@ -50,7 +50,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Node {{ $labels.instance }} is MemoryPressure
 
         - alert: HostHighCPUUsage
@@ -61,7 +61,7 @@ spec:
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
 
         - alert: HostHighMemoryUsage
@@ -73,7 +73,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "RAM usage is {{ $value }}% on {{ $labels.instance }}"
 
         # Normally there is no swap on kubernetes nodes
@@ -86,7 +86,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "SWAP usage is {{ $value }}% on {{ $labels.instance }}"
 
         - alert: HostHighDiskUsage
@@ -98,7 +98,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "Disk usage is {{ $value }}% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
 
         # Check all mountpoints except rootfs
@@ -111,7 +111,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "Disk usage is {{ $value }}% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
 
         - alert: HostOOMKill
@@ -121,7 +121,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "{{ $value }} OOM killed processes on {{ $labels.instance }}"
 
         - alert: NodeClockSkewDetected
@@ -143,7 +143,7 @@ spec:
             severity: medium
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: "Clock skew detected on {{ $labels.instance }}"
 
     - name: kubernetes-pods
@@ -156,7 +156,7 @@ spec:
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: No pod metrics in the cluster. You probably don't have kube-state-metrics deployed.
 
         - alert: PodRestartedAtLeastOneTimeOver10m
@@ -168,7 +168,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Pod {{ $labels.kubernetes_namespace }}/{{ $labels.pod }} restarted at least one time in 10 mins
 
         - alert: PodNotReady15m
@@ -180,7 +180,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Pod {{ $labels.kubernetes_namespace }}/{{ $labels.pod }} not ready for 5 mins
 
         - alert: PodBadPhase15m
@@ -192,7 +192,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Pod {{ $labels.kubernetes_namespace }}/{{ $labels.pod }} is phase={{ $labels.phase }} for 15 mins
 
         - alert: PodWaiting15m
@@ -204,7 +204,7 @@ spec:
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Pod {{ $labels.kubernetes_namespace }}/{{ $labels.pod }} waiting for 15 mins on {{ $labels.reason }}
 
         - alert: PodOOMkilledOneTime10m
@@ -217,7 +217,7 @@ spec:
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Pod {{ $labels.kubernetes_namespace }}/{{ $labels.pod }} exited with '{{ $labels.reason }}'
 
         - alert: PodEvicted
@@ -230,5 +230,5 @@ spec:
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
-            cluster: "{{ $labels.cluster }}"
+            env: "{{ $labels.env }}"
             summary: Pod {{ $labels.kubernetes_namespace }}/{{ $labels.pod }} was evicted
