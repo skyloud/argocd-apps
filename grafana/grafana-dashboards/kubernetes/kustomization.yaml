@@ -15,3 +15,6 @@ configMapGenerator:
 
   - name: dashboard-k8s-single-node
     files: [k8s-single-node.json]
+
+  - name: dashboard-k8s-event-exporter
+    files: [k8s-event-exporter.json]
