@@ -1,0 +1,17 @@
+{{- (.Files.Get "manifests/network-policy-application-controller.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-cert-manager.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-deny-all.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-dex-server.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-metadata-api.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-metrics.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-redis.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-repo-server.yaml") | nindent 0 }}
+---
+{{- (.Files.Get "manifests/network-policy-server.yaml") | nindent 0 }}
