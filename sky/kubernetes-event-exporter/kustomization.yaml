@@ -2,3 +2,5 @@ resources:
   - deploy/00-roles.yaml
   - deploy/01-config.yaml
   - deploy/02-deployment.yaml
+  - deploy/03-service.yaml
+  - deploy/04-servicemonitor.yaml
