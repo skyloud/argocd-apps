@@ -2909,7 +2909,7 @@
                 "uid": "${DS_PROMETHEUS}"
               },
               "exemplar": true,
-              "expr": "increase(node_network_receive_bytes_total{instance=~\"$instance\",device=~\"$device\"}[1m])",
+              "expr": "increase(node_network_receive_bytes_total{instance=~\"$instance\",device=~\"$device\"}[5m])/5",
               "interval": "1m",
               "intervalFactor": 2,
               "legendFormat": "{{device}}_inDownload",
@@ -2924,7 +2924,7 @@
                 "uid": "${DS_PROMETHEUS}"
               },
               "exemplar": true,
-              "expr": "increase(node_network_transmit_bytes_total{instance=~\"$instance\",device=~\"$device\"}[1m])",
+              "expr": "increase(node_network_transmit_bytes_total{instance=~\"$instance\",device=~\"$device\"}[5m])/5",
               "hide": false,
               "interval": "1m",
               "intervalFactor": 2,
