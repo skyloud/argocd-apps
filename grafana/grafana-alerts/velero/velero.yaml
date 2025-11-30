@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: velero
+spec:
+  groups:
+  - name: velero
+    rules:
+    - alert: NoScheduledBackupIn25h
+      expr: time() - velero_backup_last_successful_timestamp{schedule=~".*daily.*"} > 3600*25
+      labels:
+        alertowner: skyloud
+        severity: critical
+      annotations:
+        tenant_id: "{{ $labels.tenant_id }}"
+        cluster: "{{ $labels.cluster }}"
+        summary: No scheduled backup in 25h for {{ $labels.schedule }}
+
+    - alert: NoScheduledBackupIn3h
+      expr: time() - velero_backup_last_successful_timestamp{schedule=~".*hourly.*"} > 3600*3
+      labels:
+        alertowner: skyloud
+        severity: high
+      annotations:
+        tenant_id: "{{ $labels.tenant_id }}"
+        cluster: "{{ $labels.cluster }}"
+        summary: No scheduled backup in 3h for {{ $labels.schedule }}
+
+    - alert: VeleroBackupTakesMoreThan1h
+      expr: sum(increase(velero_backup_duration_seconds_sum[1h])) by (schedule) > 3600
+      labels:
+        alertowner: skyloud
+        severity: medium
+      for: 5m
+      annotations:
+        tenant_id: "{{ $labels.tenant_id }}"
+        cluster: "{{ $labels.cluster }}"
+        summary: Velero backup takes more than 1h for {{ $labels.namespace }}/{{ $labels.schedule }}
+
+    - alert: VeleroBackupFailed
+      expr: sum(increase(velero_backup_failure_total[15m])) by (schedule) > 0
+      labels:
+        alertowner: skyloud
+        severity: critical
+      for: 5m
+      annotations:
+        tenant_id: "{{ $labels.tenant_id }}"
+        cluster: "{{ $labels.cluster }}"
+        summary: Velero backup failed for {{ $labels.namespace }}/{{ $labels.schedule }}
