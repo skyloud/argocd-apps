@@ -1,0 +1,4 @@
+resources:
+  - deploy/00-roles.yaml
+  - deploy/01-config.yaml
+  - deploy/02-deployment.yaml
