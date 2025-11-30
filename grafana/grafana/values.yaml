@@ -18,6 +18,7 @@ app:
       searchNamespace: ALL
     dashboards:
       enabled: false
+      folderAnnotation: grafana_folder
     datasources:
       enabled: false
     notifiers:
