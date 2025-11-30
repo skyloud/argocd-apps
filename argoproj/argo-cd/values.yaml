@@ -27,6 +27,11 @@ app:
       enabled: true
       serviceMonitor:
         enabled: true
+  controller:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
   configs:
     params:
       create: true
