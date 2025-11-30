@@ -94,7 +94,7 @@
       },
       "id": 187,
       "panels": [],
-      "title": "🏡Resource Overview: Current JOB [$env: $job] Currently Selected Host [$show_name] Instance: $instance",
+      "title": "Resource Overview: [$env: $job] - [$show_name] - Node: $instance",
       "type": "row"
     },
     {
@@ -5620,7 +5620,7 @@
           "type": "timeseries"
         }
       ],
-      "title": "🧮Resource Details: [$show_name] [$instance]",
+      "title": "Resource Details: [$show_name] [$instance]",
       "type": "row"
     }
   ],
