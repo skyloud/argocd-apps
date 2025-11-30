@@ -1,17 +1,12 @@
-# Global options
 generatorOptions:
   disableNameSuffixHash: true
   labels:
     grafana_dashboard: "1"
+
 commonAnnotations:
   grafana_folder: "Kubernetes"
 
-# Generate a ConfigMap for each dashboard
 configMapGenerator:
-  #################################################
-  # Views Dashboards
-  #################################################
-
   - name: dashboard-k8s-global
     files: [k8s-global.json]
 
