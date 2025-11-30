@@ -4,6 +4,8 @@ metadata:
   name: argocd-deny-all
 spec:
   egress:
+    - to:
+        - namespaceSelector: {}
     - ports:
         - port: 6443
           protocol: TCP
@@ -16,6 +18,7 @@ spec:
       to:
         - ipBlock:
             cidr: 0.0.0.0/0
+  podSelector: {}
   policyTypes:
     - Ingress
     - Egress
