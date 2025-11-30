@@ -2,6 +2,7 @@ app:
   global:
     networkPolicy:
       create: true
+      defaultDenyIngress: true
   crds:
     install: true
   namespaceOverride: argocd
