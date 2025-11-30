@@ -4,51 +4,51 @@ metadata:
   name: persistentvolume
 spec:
   groups:
-  - name: persistentvolume
-    rules:
-    - alert: NoPVMetrics
-      expr: absent(kubelet_volume_stats_used_bytes) > 0
-      for: 5m
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
-        summary: No PV usage metrics
+    - name: persistentvolume
+      rules:
+        - alert: NoPVMetrics
+          expr: absent(kubelet_volume_stats_used_bytes) > 0
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            cluster: "{{ $labels.cluster }}"
+            summary: No PV usage metrics
 
-    - alert: HighPersistentVolumeUsage
-      expr: |
-        100 * kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 80
-      for: 15m
-      labels:
-        alertowner: skyloud
-        severity: critical
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
-        summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value }}% full
+        - alert: HighPersistentVolumeUsage
+          expr: |
+            100 * kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 80
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            cluster: "{{ $labels.cluster }}"
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value }}% full
 
-    - alert: LowInodes
-      expr: |
-        kubelet_volume_stats_inodes_free < 50000
-      for: 15m
-      labels:
-        alertowner: skyloud
-        severity: critical
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
-        summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has {{ $value }} < 50k inodes available
+        - alert: LowInodes
+          expr: |
+            kubelet_volume_stats_inodes_free < 50000
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            cluster: "{{ $labels.cluster }}"
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has {{ $value }} < 50k inodes available
 
-    - alert: PVError
-      expr: |
-        kube_persistentvolume_status_phase{phase=~"Failed|Pending"} > 0
-      for: 5m
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        cluster: "{{ $labels.cluster }}"
-        summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $labels.phase }}
+        - alert: PVError
+          expr: |
+            kube_persistentvolume_status_phase{phase=~"Failed|Pending"} > 0
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            cluster: "{{ $labels.cluster }}"
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $labels.phase }}
