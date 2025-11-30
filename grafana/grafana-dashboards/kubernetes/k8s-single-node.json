@@ -5628,10 +5628,8 @@
   "revision": 1,
   "schemaVersion": 39,
   "tags": [
-    "Prometheus",
-    "node_exporter",
-    "StarsL.cn",
-    "TenSunS"
+    "Kubernetes",
+    "Prometheus"
   ],
   "templating": {
     "list": [
