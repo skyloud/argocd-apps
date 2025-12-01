@@ -6,6 +6,9 @@ data:
   config.yaml: |
     logLevel: warn
     logFormat: json
+    kubeQPS: 100
+    kubeBurst: 500
+    maxEventAgeSeconds: 600
     metricsNamePrefix: event_exporter_
     route:
       routes:
