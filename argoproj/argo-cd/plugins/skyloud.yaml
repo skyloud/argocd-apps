@@ -23,7 +23,7 @@ app:
         command: [sh, -exc]
         env:
           - name: SOPS_VERSION
-            value: "${sops_version}"
+            value: "v3.11.0"
           - name: YQ_VERSION
             value: "v4.25.3"
           - name: HELM_VERSION
