@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd
+spec:
+groups:
+  - name: blackbox
+    rules:
+      - alert: BlackboxProbeFailure
+        expr: probe_success == 0
+        for: 5m
+        labels:
+          alertowner: skyloud
+          severity: critical
+        annotations:
+          tenant_id: "{{ $labels.tenant_id }}"
+          env: "{{ $labels.env }}"
+          description: "Probe {{ $labels.instance }} has been failing for more than 5 minutes"
+
+      - alert: BlackboxSlowProbe
+        expr: probe_duration_seconds > 15
+        for: 2m
+        labels:
+          alertowner: skyloud
+          severity: high
+        annotations:
+          tenant_id: "{{ $labels.tenant_id }}"
+          env: "{{ $labels.env }}"
+          description: "Probe {{ $labels.instance }} took {{ $value }} seconds"
