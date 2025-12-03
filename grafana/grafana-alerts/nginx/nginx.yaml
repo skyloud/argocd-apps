@@ -4,97 +4,97 @@ metadata:
   name: nginx
 spec:
   groups:
-  - name: nginx
-    rules:
-    - alert: TlsCertExpireIn10d
-      expr: |
-        avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()
-        < 86400 * 7
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
-        summary: "TLS certificate expires in less than 7 days for {{ $labels.host }}"
+    - name: nginx
+      rules:
+        - alert: TlsCertExpireIn10d
+          expr: |
+            avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()
+            < 86400 * 7
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "TLS certificate expires in less than 7 days for {{ $labels.host }}"
 
-    - alert: MoreThanFive5xxIn10Mins
-      expr: |
-        (
-          sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)
-          > 25
-        )
-        and
-        (
-          sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)
-          > 3 * avg_over_time(sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)[1h:10m])
-        )
-      for: 2m
-      labels:
-        alertowner: skyloud
-        severity: medium
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
-        summary: "{{ $value }} HTTP 5xx in 10mins for {{ $labels.ingress }} (3x higher than usual)"
-
-    - alert: HighErrorRate5xx
-      expr: |
-        sum(rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status!~"5.*"}[2m])) by (ingress)
-        /
-        sum(rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[2m])) by (ingress)
-        < 0.95
-      for: 2m
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
-        summary: High error rate 5xx for {{ $labels.ingress }} (success {{ $value }}% < 95%)
-
-    - alert: HighErrorCount401
-      expr: |
-        sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="401"}[10m])) by (ingress)
-        > 100
-      for: 2m
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
-        summary: "{{ $value }} HTTP 401 in 10m for {{ $labels.ingress }}"
-    
-    - alert: HighErrorCount403
-      expr: |
-        sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="403"}[10m])) by (ingress)
-        > 100
-      for: 2m
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
-        summary: "{{ $value }} HTTP 403 in 10m for {{ $labels.ingress }}"
-
-    - alert: HighLatency90p20s
-      expr: |
-        histogram_quantile(
-          0.9,
-          sum(
-            rate(
-              nginx_ingress_controller_response_duration_seconds_bucket[5m]
+        - alert: MoreThanFive5xxIn10Mins
+          expr: |
+            (
+              sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)
+              > 25
             )
-          )
-          by (le, ingress)
-        ) > 20
-      for: 5m
-      labels:
-        alertowner: skyloud
-        severity: high
-      annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
-        summary: "Latency P90 is {{ $value }}s for {{ $labels.ingress }}"
+            and
+            (
+              sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)
+              > 3 * avg_over_time(sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)[1h:10m])
+            )
+          for: 2m
+          labels:
+            alertowner: skyloud
+            severity: medium
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "{{ $value }} HTTP 5xx in 10mins for {{ $labels.ingress }} (3x higher than usual)"
+
+        - alert: HighErrorRate5xx
+          expr: |
+            sum(rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status!~"5.*"}[2m])) by (ingress)
+            /
+            sum(rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[2m])) by (ingress)
+            < 0.95
+          for: 2m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: High error rate 5xx for {{ $labels.ingress }} (success {{ $value }}% < 95%)
+
+        - alert: HighErrorCount401
+          expr: |
+            sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="401"}[10m])) by (ingress)
+            > 100
+          for: 2m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "{{ $value }} HTTP 401 in 10m for {{ $labels.ingress }}"
+
+        - alert: HighErrorCount403
+          expr: |
+            sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="403"}[10m])) by (ingress)
+            > 100
+          for: 2m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "{{ $value }} HTTP 403 in 10m for {{ $labels.ingress }}"
+
+        - alert: HighLatency90p20s
+          expr: |
+            histogram_quantile(
+              0.9,
+              sum(
+                rate(
+                  nginx_ingress_controller_response_duration_seconds_bucket[5m]
+                )
+              )
+              by (le, ingress)
+            ) > 20
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "Latency P90 is {{ $value }}s for {{ $labels.ingress }}"
