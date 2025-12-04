@@ -94,7 +94,7 @@
       }
     ]
   },
-  "description": "This is a modern CoreDNS dashboard for your Kubernetes cluster(s). Made for kube-prometheus-stack and take advantage of the latest Grafana features. GitHub repository: https://github.com/dotdc/grafana-dashboards-kubernetes",
+  "description": "Dashboard for visualizing CoreDNS metrics in Kubernetes clusters using Prometheus. Provides panels for CPU, memory, DNS requests, cache, errors, and latency. Repo: https://github.com/dotdc/grafana-dashboards-kubernetes",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -1393,7 +1393,7 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": [
-    "Kubernetes",
+    "CoreDNS",
     "Prometheus"
   ],
   "templating": {
@@ -1593,8 +1593,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Kubernetes / System / CoreDNS",
-  "uid": "k8s_system_coredns",
+  "title": "CoreDNS / Overview",
+  "uid": "coredns-overview",
   "version": 22,
   "weekStart": ""
 }
