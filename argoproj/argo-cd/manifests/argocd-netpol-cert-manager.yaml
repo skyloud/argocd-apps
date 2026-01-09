@@ -4,11 +4,11 @@ metadata:
   name: argocd-cert-manager-network-policy
 spec:
   ingress:
-  - ports:
-    - port: http
-      protocol: TCP
+    - ports:
+        - port: http
+          protocol: TCP
   podSelector:
     matchLabels:
       acme.cert-manager.io/http01-solver: "true"
   policyTypes:
-  - Ingress
+    - Ingress
