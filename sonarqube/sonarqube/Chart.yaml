@@ -1,0 +1,10 @@
+apiVersion: v2
+name: sonarqube
+version: 2025.6.1
+type: application
+
+dependencies:
+  - name: sonarqube
+    version: ~2025.6.1
+    repository: "https://SonarSource.github.io/helm-chart-sonarqube"
+    alias: app
