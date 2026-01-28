@@ -1,0 +1,10 @@
+apiVersion: v2
+name: dependency-track
+version: 0.41.0
+type: application
+
+dependencies:
+  - name: dependency-track
+    version: ~0.41.0
+    repository: "https://dependencytrack.github.io/helm-charts"
+    alias: app
