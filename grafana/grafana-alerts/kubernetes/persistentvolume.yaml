@@ -13,6 +13,8 @@ spec:
             alertowner: skyloud
             severity: high
           annotations:
+            tenant_id: "anonymous"
+            env: "env"
             summary: No PV usage metrics
 
         - alert: HighPersistentVolumeUsage
