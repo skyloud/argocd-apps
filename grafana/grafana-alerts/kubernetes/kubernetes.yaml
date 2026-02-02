@@ -155,8 +155,6 @@ spec:
             alertowner: skyloud
             severity: high
           annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
             summary: No pod metrics in the cluster. You probably don't have kube-state-metrics deployed.
 
         - alert: PodRestartedAtLeastOneTimeOver10m

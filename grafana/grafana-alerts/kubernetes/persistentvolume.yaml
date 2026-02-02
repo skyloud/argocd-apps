@@ -13,8 +13,6 @@ spec:
             alertowner: skyloud
             severity: high
           annotations:
-            tenant_id: "{{ $externalLabels.tenant_id }}"
-            env: "{{ $externalLabels.env }}"
             summary: No PV usage metrics
 
         - alert: HighPersistentVolumeUsage
