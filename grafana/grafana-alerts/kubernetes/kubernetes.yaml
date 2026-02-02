@@ -156,7 +156,7 @@ spec:
             severity: high
           annotations:
             tenant_id: "anonymous"
-            env: "env"
+            env: "unkown"
             summary: No pod metrics in the cluster. You probably don't have kube-state-metrics deployed.
 
         - alert: PodRestartedAtLeastOneTimeOver10m
