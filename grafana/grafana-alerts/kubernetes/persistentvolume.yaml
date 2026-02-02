@@ -14,7 +14,7 @@ spec:
             severity: high
           annotations:
             tenant_id: "anonymous"
-            env: "unkown"
+            env: "unknown"
             summary: No PV usage metrics
 
         - alert: HighPersistentVolumeUsage
