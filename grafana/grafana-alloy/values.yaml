@@ -5,3 +5,5 @@ app:
       varlog: true
     serviceMonitor:
       enabled: true
+    nodeSelector: {}
+    tolerations: []
