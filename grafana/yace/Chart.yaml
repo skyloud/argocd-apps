@@ -4,6 +4,6 @@ version: 5.8.0
 type: application
 dependencies:
   - name: prometheus-yet-another-cloudwatch-exporter
-    version: 0.63.0
+    version: 0.41.0
     repository: "https://prometheus-community.github.io/helm-charts"
     alias: app
