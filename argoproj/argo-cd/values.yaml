@@ -41,6 +41,10 @@ app:
       create: true
       annotations: {}
       enabled: true
+      controller.status.processors: 50
+      controller.operation.processors: 25
+      controller.repo.server.timeout.seconds: 120
+      reposerver.parallelism.limit: 10
       list:
         - name: server.insecure
           value: "true"
