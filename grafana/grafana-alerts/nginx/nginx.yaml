@@ -56,7 +56,7 @@ spec:
         - alert: HighErrorCount401
           expr: |
             sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="401"}[10m])) by (ingress)
-            > 100
+            > 1000
           for: 2m
           labels:
             alertowner: skyloud
