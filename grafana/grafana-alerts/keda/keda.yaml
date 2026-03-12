@@ -1,0 +1,73 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: keda
+spec:
+  groups:
+    - name: keda
+      rules:
+        - alert: KedaScalerErrors
+          expr: 'sum by(scaler, scaledObject, exported_namespace) (rate(keda_scaler_detail_errors_total[5m])) > 0'
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "KEDA scaler errors (scaler {{ $labels.scaler }}, object {{ $labels.scaledObject }})"
+            description: "KEDA scaler {{ $labels.scaler }} for ScaledObject {{ $labels.scaledObject }} is returning errors in namespace {{ $labels.exported_namespace }}\n  VALUE = {{ $value }}"
+
+        - alert: KedaScaledObjectErrors
+          expr: 'sum by(scaledObject, exported_namespace) (rate(keda_scaled_object_errors_total[5m])) > 0'
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "KEDA ScaledObject errors (object {{ $labels.scaledObject }})"
+            description: "KEDA ScaledObject {{ $labels.scaledObject }} is in error state in namespace {{ $labels.exported_namespace }}\n  VALUE = {{ $value }}"
+
+        - alert: KedaScaledObjectAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=~"keda-hpa-.*"}
+            ==
+            kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler=~"keda-hpa-.*"}
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "KEDA at max replicas (HPA {{ $labels.horizontalpodautoscaler }})"
+            description: "KEDA HPA {{ $labels.horizontalpodautoscaler }} is at max replicas in namespace {{ $labels.namespace }} for more than 15 minutes\n  VALUE = {{ $value }}"
+
+        - alert: KedaScaledObjectAtZeroReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=~"keda-hpa-.*"} == 0
+            and
+            kube_horizontalpodautoscaler_spec_min_replicas{horizontalpodautoscaler=~"keda-hpa-.*"} > 0
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "KEDA at 0 replicas (HPA {{ $labels.horizontalpodautoscaler }})"
+            description: "KEDA HPA {{ $labels.horizontalpodautoscaler }} has 0 replicas while min is > 0 in namespace {{ $labels.namespace }}\n  VALUE = {{ $value }}"
+
+        - alert: KedaMetricValueZero
+          expr: 'sum by(metric, scaledObject, exported_namespace) (keda_scaler_metrics_value) == 0'
+          for: 30m
+          labels:
+            alertowner: skyloud
+            severity: medium
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "KEDA metric stuck at 0 (metric {{ $labels.metric }}, object {{ $labels.scaledObject }})"
+            description: "KEDA metric {{ $labels.metric }} for ScaledObject {{ $labels.scaledObject }} is at 0 for 30 minutes in namespace {{ $labels.exported_namespace }}\n  VALUE = {{ $value }}"
