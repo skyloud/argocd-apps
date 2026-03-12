@@ -1,0 +1,11 @@
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+
+commonAnnotations:
+  grafana_folder: "RabbitMQ"
+
+configMapGenerator:
+  - name: dashboard-rabbitmq
+    files: [rabbitmq.json]
