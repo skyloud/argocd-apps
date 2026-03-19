@@ -162,6 +162,8 @@ spec:
         - alert: PodRestartedAtLeastOneTimeOver10m
           expr: |
             increase(kube_pod_container_status_restarts_total[10m]) > 0
+            unless on(namespace, pod)
+            (kube_pod_container_status_last_terminated_reason{reason="Completed"} == 1)
           for: 1m
           labels:
             alertowner: skyloud
