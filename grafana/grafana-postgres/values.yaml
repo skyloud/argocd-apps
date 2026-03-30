@@ -2,7 +2,7 @@ app:
   cluster:
     instances: 1
     storage:
-      size: 5Gi
+      size: 2Gi
     resources:
       limits:
         memory: 512Mi
