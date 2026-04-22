@@ -1,0 +1,49 @@
+app:
+  replicaCount: 2
+
+  revisionHistoryLimit: 3
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: aws-load-balancer-controller
+    automountServiceAccountToken: true
+
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
+  priorityClassName: system-cluster-critical
+
+  nodeSelector: {}
+  tolerations: []
+
+  configureDefaultAffinity: true
+
+  clusterName: eks
+
+  cluster:
+    dnsDomain: cluster.local
+
+  ingressClassParams:
+    create: false
+
+  createIngressClassResource: false
+
+  podDisruptionBudget:
+    maxUnavailable: 1
+
+  serviceMonitor:
+    enabled: true
