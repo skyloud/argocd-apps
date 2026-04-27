@@ -1,0 +1,89 @@
+{{- $imagePullSecrets := .Values.image.pullSecrets -}}
+
+{{- range .Values.cronJobs }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .name }}
+spec:
+  concurrencyPolicy: {{ .concurrencyPolicy | default "Allow" }}
+  failedJobsHistoryLimit: {{ .failedJobsHistoryLimit | default 1 }}
+  schedule: {{ .schedule | quote }}
+  jobTemplate:
+    metadata:
+      name: {{ .name }}
+    spec:
+      template:
+        spec:
+          containers:
+            - name: {{ .name }}
+              imagePullPolicy: {{ .imagePullPolicy | default "IfNotPresent"}}
+              {{- if and (.image).tag .image.repository }}
+              image: "{{ .image.repository }}:{{ .image.tag }}"
+              {{- else }}
+              image: {{ include "common.image" $ }}
+              {{- end }}
+              {{- with .resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .command }}
+              command:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .args }}
+              args:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .envFrom }}
+              envFrom:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with .volumeMounts }}
+              volumeMounts:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- with $imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          restartPolicy: {{ .restartPolicy | default "OnFailure" }}
+          {{- with .podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .volumes }}
+          volumes:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .priorityClassName }}
+          priorityClassName: {{ . }}
+          {{- end }}
+          {{- with .schedulerName }}
+          schedulerName: {{ . }}
+          {{- end }}
+          terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds | default 30 }}
+      backoffLimit: 3
+  successfulJobsHistoryLimit: {{ .successfulJobsHistoryLimit | default 2 }}
+{{- end }}
