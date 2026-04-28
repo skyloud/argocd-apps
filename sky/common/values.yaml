@@ -86,7 +86,7 @@ ingress:
 
 gatewayApi:
   httpRoute:
-    enabled: true
+    enabled: false
     # Parent Gateway this HTTPRoute attaches to.
     parentRefs:
       - name: default-gateway
@@ -225,6 +225,25 @@ args: []
 
 serviceAccount:
   annotations: {}
+
+externalSecret:
+  enabled: false
+  refreshInterval: ""
+  secretStoreRef:
+    name: ""
+    kind: ClusterSecretStore
+  target:
+    name: ""
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data: []
+  # - secretKey: MY_SECRET
+  #   remoteRef:
+  #     key: my-app
+  #     property: MY_SECRET
+  dataFrom: []
+  # - extract:
+  #     key: my-app
 
 cronJobs: []
   # - name: my-cronjob
