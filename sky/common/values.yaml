@@ -302,3 +302,6 @@ jobs:
   #   volumes: []
   #   securityContext: {}
   #   podSecurityContext: {}
+  #   nodeSelector: {}
+  #   tolerations: []
+  #   affinity: {}
