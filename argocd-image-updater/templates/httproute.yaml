@@ -1,0 +1,31 @@
+{{- $hr := .Values.gatewayApi.httpRoute | default dict -}}
+{{- if $hr.enabled -}}
+{{- if not $hr.parentRefs }}
+{{- fail "gatewayApi.httpRoute.parentRefs is required when gatewayApi.httpRoute.enabled=true" }}
+{{- end }}
+{{- $backendName := include "argocd-image-updater.fullname" . -}}
+{{- $backendPort := (index .Values "app" "service" "port") | default 8082 -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $hr.name | default (printf "%s-webhook" $backendName) }}
+spec:
+  parentRefs:
+    {{- toYaml $hr.parentRefs | nindent 4 }}
+  {{- with $hr.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if $hr.rules }}
+    {{- toYaml $hr.rules | nindent 4 }}
+    {{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $hr.path | default "/webhook" }}
+      backendRefs:
+        - name: {{ $backendName }}
+          port: {{ $backendPort }}
+    {{- end }}
+{{- end }}
