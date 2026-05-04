@@ -12,7 +12,7 @@ app:
           key: argocd-image-updater
           property: CLOUDEVENTS_WEBHOOK_SECRET
 
-  envFrom:
+  extraEnvFrom:
     - secretRef:
         name: argocd-image-updater
 

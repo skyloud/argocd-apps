@@ -1,10 +1,10 @@
-{{- $hr := .Values.gatewayApi.httpRoute | default dict -}}
+{{- $hr := .Values.app.gatewayApi.httpRoute | default dict -}}
 {{- if $hr.enabled -}}
 {{- if not $hr.parentRefs }}
-{{- fail "gatewayApi.httpRoute.parentRefs is required when gatewayApi.httpRoute.enabled=true" }}
+{{- fail "app.gatewayApi.httpRoute.parentRefs is required when app.gatewayApi.httpRoute.enabled=true" }}
 {{- end }}
 {{- $backendName := include "argocd-image-updater.fullname" . -}}
-{{- $backendPort := (index .Values "app" "service" "port") | default 8082 -}}
+{{- $backendPort := (index .Values.app "service" "port") | default 8082 -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
