@@ -5,20 +5,20 @@ metadata:
   name: {{ include "common.fullname" $ }}
 spec:
   applicationRefs:
-    - namePattern: {{ .Release.Name }}
+    - namePattern: {{ .Release.Name | quote }}
       writeBackConfig:
-          method: {{ .Values.imageUpdater.writeBackConfig.method }}
-      gitConfig:
-          repository: {{ .Values.imageUpdater.writeBackConfig.gitConfig.repository }}
-          branch: {{ .Values.imageUpdater.writeBackConfig.gitConfig.branch }}
-          writeBackTarget: {{ .Values.imageUpdater.writeBackConfig.gitConfig.writeBackTarget }}
+        method: {{ .Values.imageUpdater.writeBackConfig.method | quote }}
+        gitConfig:
+          repository: {{ .Values.imageUpdater.writeBackConfig.gitConfig.repository | quote }}
+          branch: {{ .Values.imageUpdater.writeBackConfig.gitConfig.branch | quote }}
+          writeBackTarget: {{ .Values.imageUpdater.writeBackConfig.gitConfig.writeBackTarget | quote }}
       images:
-        - alias: {{ .Values.imageUpdater.image.alias }}
-          imageName: {{ .Values.image.repository }}
+        - alias: {{ .Values.imageUpdater.image.alias | quote }}
+          imageName: {{ .Values.image.repository | quote }}
           commonUpdateSettings:
-            updateStrategy: {{ .Values.imageUpdater.image.updateStrategy }}
+            updateStrategy: {{ .Values.imageUpdater.image.updateStrategy | quote }}
           manifestTargets:
             helm:
-              name: {{ .Values.imageUpdater.image.manifestTargets.helm.nameKey }}
-              tag: {{ .Values.imageUpdater.image.manifestTargets.helm.tagKey }}
+              name: {{ .Values.imageUpdater.image.manifestTargets.helm.nameKey | quote }}
+              tag: {{ .Values.imageUpdater.image.manifestTargets.helm.tagKey | quote }}
 {{- end }}
