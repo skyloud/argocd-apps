@@ -305,3 +305,19 @@ jobs:
   #   nodeSelector: {}
   #   tolerations: []
   #   affinity: {}
+
+imageUpdater:
+  enabled: false
+  writeBackConfig:
+    method: git
+    gitConfig:
+      repository: ""
+      branch: "main"
+      writeBackTarget: ""
+  image:
+    alias: ""
+    updateStrategy: "newest-build"
+    manifestTargets:
+      helm:
+        nameKey: "image.repository"
+        tagKey: "image.tag"
