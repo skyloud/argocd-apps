@@ -308,6 +308,7 @@ jobs:
 
 imageUpdater:
   enabled: false
+  applicationNamespace: "argocd"
   writeBackConfig:
     method: git
     gitConfig:

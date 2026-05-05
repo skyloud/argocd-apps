@@ -3,6 +3,7 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: {{ include "common.fullname" $ }}
+  namespace: {{ .Values.imageUpdater.applicationNamespace}}
 spec:
   applicationRefs:
     - namePattern: {{ .Release.Name | quote }}
