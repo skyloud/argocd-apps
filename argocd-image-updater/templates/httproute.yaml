@@ -26,6 +26,9 @@ spec:
             value: {{ $hr.path | default "/webhook" }}
       backendRefs:
         - name: {{ $backendName }}
+          group: ""
+          kind: Service
           port: {{ $backendPort }}
+          weight: 1
     {{- end }}
 {{- end }}
