@@ -62,7 +62,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- if and $np.instanceCpus (gt (len $np.instanceCpus) 0) }}
-        - key: node.kubernetes.io/instance-cpu
+        - key: karpenter.k8s.aws/instance-cpu
           operator: In
           values:
             {{- range $np.instanceCpus }}
