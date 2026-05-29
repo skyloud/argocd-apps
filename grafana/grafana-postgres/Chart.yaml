@@ -1,0 +1,9 @@
+apiVersion: v2
+name: grafana-database
+version: 0.6.0
+type: application
+dependencies:
+  - name: cluster
+    version: ~0.6.0
+    repository: "https://cloudnative-pg.github.io/charts"
+    alias: app
