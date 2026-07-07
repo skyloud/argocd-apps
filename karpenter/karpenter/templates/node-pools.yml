@@ -77,9 +77,9 @@ spec:
           effect: {{ default "NoSchedule" .effect | quote }}
         {{- end }}
       {{- end }}
-      {{- if $np.startUpTaints }}
+      {{- if and $np.startupTaints (gt (len $np.startupTaints) 0) }}
       startupTaints:
-        {{- range $np.startUpTaints }}
+        {{- range $np.startupTaints }}
         - key: {{ .key | quote }}
           value: {{ default "" .value | quote }}
           effect: {{ default "NoSchedule" .effect | quote }}
