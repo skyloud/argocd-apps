@@ -1,0 +1,40 @@
+image:
+  # https://hub.docker.com/r/alpine/k8s/tags — tag = kubectl version (match control plane minor)
+  # Latest: 1.36.2 | for 1.35 clusters use 1.35.6
+  repository: alpine/k8s
+  tag: "1.36.2"
+  digest: ""
+  pullPolicy: IfNotPresent
+
+priorityClassName: system-node-critical
+hostNetwork: true
+dnsPolicy: ClusterFirstWithHostNet
+terminationGracePeriodSeconds: 5
+
+serviceAccount:
+  create: true
+  name: node-gate
+
+rbac:
+  create: true
+
+# Bootstrap tolerations — must tolerate startup taints and node-role taints.
+tolerations:
+  - operator: Exists
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 50m
+    memory: 64Mi
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# Each gate polls a check, then runs actions. Gates run sequentially on a node.
+gates: []

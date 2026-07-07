@@ -1,0 +1,6 @@
+apiVersion: v2
+name: node-gate
+description: Node bootstrap gates — poll readiness checks and unblock nodes (startup taints / labels)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

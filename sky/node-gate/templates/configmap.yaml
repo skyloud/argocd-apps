@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "node-gate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "node-gate.labels" . | nindent 4 }}
+data:
+  run-gates.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    log() { echo "[$(date -u +%FT%TZ)] ${NODE_NAME}: $*"; }
+
+    http_check() {
+      local url="$1" timeout="$2"
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsS -o /dev/null -m "${timeout}" "${url}"
+        return $?
+      fi
+      if command -v wget >/dev/null 2>&1; then
+        wget -q -T "${timeout}" -O /dev/null "${url}"
+        return $?
+      fi
+      log "ERROR: curl or wget required for http checks"
+      return 1
+    }
+
+    remove_taint() {
+      local key="$1" effect="$2"
+      kubectl taint node "${NODE_NAME}" "${key}:${effect}-" 2>/dev/null || true
+    }
+
+    set_label() {
+      local key="$1" value="$2"
+      kubectl label node "${NODE_NAME}" "${key}=${value}" --overwrite
+    }
+
+    {{- range .Values.gates }}
+    {{- if (.enabled | default true) }}
+    {{- $gateName := .name }}
+    # ── gate: {{ $gateName }} ──
+    log "gate={{ $gateName }}: waiting for readiness"
+  {{- $interval := .check.intervalSeconds | default 3 }}
+  {{- $timeout := .check.timeoutSeconds | default 2 }}
+  {{- $failsafe := .failsafe.timeoutSeconds | default 120 }}
+  {{- $onTimeout := .failsafe.onTimeout | default "removeTaint" }}
+    GATE_START=$(date +%s)
+    GATE_READY=false
+    while true; do
+      if \
+  {{- if eq (.check.type | default "http") "http" }}
+        http_check "{{ required "check.url is required for http gates" .check.url }}" "{{ $timeout }}"
+  {{- else if eq .check.type "tcp" }}
+        (echo >/dev/tcp/{{ .check.host }}/{{ .check.port }}) 2>/dev/null
+  {{- else if eq .check.type "exec" }}
+        {{ .check.command }}
+  {{- else }}
+        false
+  {{- end }}
+      then
+        GATE_READY=true
+        log "gate={{ $gateName }}: check passed"
+        break
+      fi
+      ELAPSED=$(( $(date +%s) - GATE_START ))
+      if (( ELAPSED >= {{ $failsafe }} )); then
+        log "gate={{ $gateName }}: failsafe timeout after {{ $failsafe }}s (onTimeout={{ $onTimeout }})"
+  {{- if eq $onTimeout "removeTaint" }}
+  {{- range .actions }}
+  {{- if eq .type "removeTaint" }}
+        remove_taint "{{ .key }}" "{{ .effect | default "NoSchedule" }}"
+  {{- end }}
+  {{- end }}
+  {{- end }}
+        GATE_READY=true
+        break
+      fi
+      sleep {{ $interval }}
+    done
+    if [[ "${GATE_READY}" == "true" ]]; then
+  {{- range .actions }}
+  {{- if eq .type "removeTaint" }}
+      remove_taint "{{ .key }}" "{{ .effect | default "NoSchedule" }}"
+      log "gate={{ $gateName }}: removed taint {{ .key }}:{{ .effect | default "NoSchedule" }}"
+  {{- else if eq .type "setLabel" }}
+      set_label "{{ .key }}" "{{ .value }}"
+      log "gate={{ $gateName }}: set label {{ .key }}={{ .value }}"
+  {{- else if eq .type "removeLabel" }}
+      kubectl label node "${NODE_NAME}" "{{ .key }}-" --overwrite 2>/dev/null || true
+      log "gate={{ $gateName }}: removed label {{ .key }}"
+  {{- end }}
+  {{- end }}
+    fi
+    {{- end }}
+    {{- end }}
+
+    log "all gates complete — idling for pod lifetime"
+    exec sleep infinity

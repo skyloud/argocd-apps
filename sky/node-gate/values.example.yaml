@@ -1,0 +1,18 @@
+gates:
+  - name: pod-identity
+    enabled: true
+    check:
+      type: http
+      url: http://169.254.170.23/
+      intervalSeconds: 3
+      timeoutSeconds: 2
+    actions:
+      - type: removeTaint
+        key: node.node-gate.io/pod-identity-not-ready
+        effect: NoSchedule
+      - type: setLabel
+        key: node.node-gate.io/pod-identity-ready
+        value: "true"
+    failsafe:
+      timeoutSeconds: 120
+      onTimeout: removeTaint
