@@ -75,7 +75,6 @@ app:
       minReplicas: 1
       maxReplicas: 20
       targetCPUUtilizationPercentage: 95
-      targetMemoryUtilizationPercentage: 80
 
     resources:
       limits:
