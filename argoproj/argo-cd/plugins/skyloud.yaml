@@ -1,0 +1,128 @@
+app:
+  repoServer:
+    volumeMounts:
+      - name: custom-tools
+        mountPath: /usr/local/bin/argocd-vault-plugin
+        subPath: argocd-vault-plugin
+    volumes:
+      - name: custom-tools
+        emptyDir: {}
+      - name: cmp-tmp
+        emptyDir: {}
+      - configMap:
+          name: argocd-cmp-plugin-k8s
+          defaultMode: 0755
+        name: argocd-cmp-plugin-k8s
+      - configMap:
+          name: argocd-cmp-plugin-helm
+          defaultMode: 0755
+        name: argocd-cmp-plugin-helm
+    initContainers:
+      - name: download-tools
+        image: curlimages/curl
+        command: [sh, -exc]
+        env:
+          - name: SOPS_VERSION
+            value: "v3.11.0"
+          - name: YQ_VERSION
+            value: "v4.25.3"
+          - name: HELM_VERSION
+            value: "v3.18.6"
+        args:
+          - |
+            [ "$$(arch)" == "aarch64" ] && export ARCH="arm64" || export ARCH="amd64"
+            echo "ARCH=$$ARCH"
+            curl -L https://github.com/mozilla/sops/releases/download/$${SOPS_VERSION}/sops-$${SOPS_VERSION}.linux.$${ARCH} -o /custom-tools/sops
+            chmod +x /custom-tools/sops
+            curl -L https://github.com/mikefarah/yq/releases/download/$${YQ_VERSION}/yq_linux_$${ARCH} -o /custom-tools/yq
+            chmod +x /custom-tools/yq
+            curl -L https://get.helm.sh/helm-$${HELM_VERSION}-linux-$${ARCH}.tar.gz | tar -xz -C /tmp
+            mv /tmp/linux-$${ARCH}/helm /custom-tools/helm
+            chmod +x /custom-tools/helm
+        volumeMounts:
+          - mountPath: /custom-tools
+            name: custom-tools
+    extraContainers:
+      # argocd-sops-plugin with Helm
+      - name: sops-helm
+        command: [/var/run/argocd/argocd-cmp-server]
+        image: quay.io/argoproj/argocd:latest
+        envFrom:
+          - secretRef:
+              name: argocd-sops-plugin-credentials
+        env:
+          - name: HELM_REPO_NAME
+            valueFrom:
+              secretKeyRef:
+                name: argocd-repo-helm
+                key: name
+                optional: false
+          - name: HELM_REPO_URL
+            valueFrom:
+              secretKeyRef:
+                name: argocd-repo-helm
+                key: url
+                optional: false
+          - name: HELM_REPO_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: argocd-repo-helm
+                key: username
+                optional: false
+          - name: HELM_REPO_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: argocd-repo-helm
+                key: password
+                optional: false
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+        volumeMounts:
+          - mountPath: /var/run/argocd
+            name: var-files
+          - mountPath: /home/argocd/cmp-server/plugins
+            name: plugins
+          - mountPath: /tmp
+            name: cmp-tmp
+          - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+            subPath: sops-helm.yaml
+            name: argocd-cmp-plugin-helm
+          - mountPath: /home/argocd/cmp-server/config/plugin.sh
+            subPath: sops-helm.sh
+            name: argocd-cmp-plugin-helm
+          - name: custom-tools
+            subPath: sops
+            mountPath: /usr/local/bin/sops
+          - name: custom-tools
+            subPath: yq
+            mountPath: /usr/local/bin/yq
+          - name: custom-tools
+            subPath: helm
+            mountPath: /usr/local/bin/helm
+      # argocd-sops-plugin for normal k8s resources
+      - name: sops-k8s
+        command: [/var/run/argocd/argocd-cmp-server]
+        image: quay.io/argoproj/argocd:latest
+        envFrom:
+          - secretRef:
+              name: argocd-sops-plugin-credentials
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+        volumeMounts:
+          - mountPath: /var/run/argocd
+            name: var-files
+          - mountPath: /home/argocd/cmp-server/plugins
+            name: plugins
+          - mountPath: /tmp
+            name: cmp-tmp
+          - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+            subPath: sops-k8s.yaml
+            name: argocd-cmp-plugin-k8s
+          - mountPath: /home/argocd/cmp-server/config/plugin.sh
+            subPath: sops-k8s.sh
+            name: argocd-cmp-plugin-k8s
+          - name: custom-tools
+            subPath: sops
+            mountPath: /usr/local/bin/sops

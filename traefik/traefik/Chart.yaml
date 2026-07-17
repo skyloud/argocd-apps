@@ -1,0 +1,10 @@
+apiVersion: v2
+name: traefik
+version: 37.2.0
+type: application
+
+dependencies:
+  - name: traefik
+    version: ~37.2.0
+    repository: "https://traefik.github.io/charts"
+    alias: app

@@ -1,0 +1,29 @@
+app:
+  externalSecret:
+    enabled: false
+    secretStoreRef:
+      name: aws-secrets-manager-secret-store
+      kind: ClusterSecretStore
+    target:
+      name: argocd-image-updater
+    data:
+      - secretKey: CLOUDEVENTS_WEBHOOK_SECRET
+        remoteRef:
+          conversionStrategy: Default
+          decodingStrategy: None
+          metadataPolicy: None
+          key: argocd-image-updater
+          property: CLOUDEVENTS_WEBHOOK_SECRET
+
+  extraEnvFrom:
+    - secretRef:
+        name: argocd-image-updater
+
+  gatewayApi:
+    httpRoute:
+      enabled: false
+      name: ""
+      path: /webhook
+      parentRefs: []
+      hostnames: []
+      rules: []

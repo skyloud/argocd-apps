@@ -1,0 +1,55 @@
+app:
+  global:
+    networkPolicy:
+      create: true
+      defaultDenyIngress: true
+  crds:
+    install: true
+  namespaceOverride: argocd
+  server:
+    service:
+      type: ClusterIP
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+  ingress:
+    enabled: false
+  repoServer:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+  redis:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+  dex:
+    enabled: true
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+  controller:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+  configs:
+    params:
+      create: true
+      annotations: {}
+      enabled: true
+      controller.status.processors: 50
+      controller.operation.processors: 25
+      controller.repo.server.timeout.seconds: 120
+      reposerver.parallelism.limit: 10
+      list:
+        - name: server.insecure
+          value: "true"
+    secret:
+      createSecret: true
+    cm:
+      create: true
+      application.resourceTrackingMethod: server

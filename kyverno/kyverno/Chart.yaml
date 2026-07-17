@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kyverno
+version: 3.5.0
+type: application
+
+dependencies:
+  - name: kyverno
+    version: ~3.5.0
+    repository: "https://kyverno.github.io/kyverno/"
+    alias: app

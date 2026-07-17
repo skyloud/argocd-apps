@@ -1,0 +1,38 @@
+app:
+  env:
+    GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: false
+    GF_ANALYTICS_CHECK_FOR_UPDATES: false
+    GF_ANALYTICS_REPORTING_ENABLED: false
+    GF_USERS_USER_INVITE_MAX_LIFETIME_DURATION: 7d
+    GF_USERS_VIEWERS_CAN_EDIT: true
+  initChownData:
+    enabled: false
+  rbac:
+    create: true
+  serviceMonitor:
+    enabled: true
+  sidecar:
+    alerts:
+      enabled: true
+      label: grafana_alert
+      searchNamespace: ALL
+    dashboards:
+      enabled: false
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: false
+    notifiers:
+      enabled: false
+    plugins:
+      enabled: false
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  testFramework:
+    enabled: false

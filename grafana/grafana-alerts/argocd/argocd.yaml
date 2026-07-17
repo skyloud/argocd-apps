@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd
+spec:
+  groups:
+    - name: argocd
+      rules:
+        - alert: AppNotSynced
+          expr: argocd_app_info{sync_status!="Synced"} != 0
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: medium
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "Application {{ $labels.name }} is not synced"
+
+        - alert: AppUnhealthy
+          expr: argocd_app_info{health_status!="Healthy"} != 0
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "Application {{ $labels.name }} is not healthy"

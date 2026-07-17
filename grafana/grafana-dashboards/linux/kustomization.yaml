@@ -1,0 +1,11 @@
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+
+commonAnnotations:
+  grafana_folder: "Linux"
+
+configMapGenerator:
+  - name: dashboard-linux-single-node
+    files: [linux-single-node.json]

@@ -1,0 +1,1 @@
+{{- (.Files.Get "manifests/networkpolicy.yaml") | nindent 0 }}

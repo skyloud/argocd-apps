@@ -1,0 +1,107 @@
+{{- range $name, $nc := $.Values.app.nodeClasses }}
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: {{ printf "%s-node-class" $name }}
+  labels:
+    {{- include "karpenter.labels" $ | nindent 4 }}
+spec:
+  kubelet:
+    podsPerCore: {{ default 25 $nc.podsPerCore }}
+    maxPods: {{ default 110 $nc.maxPods }}
+    systemReserved:
+      cpu: {{ if $nc.systemReserved }}{{ $nc.systemReserved.cpu | default "100m" }}{{ else }}100m{{ end }}
+      memory: {{ if $nc.systemReserved }}{{ $nc.systemReserved.memory | default "100Mi" }}{{ else }}100Mi{{ end }}
+      ephemeral-storage: {{ if $nc.systemReserved }}{{ $nc.systemReserved.ephemeralStorage | default "1Gi" }}{{ else }}1Gi{{ end }}
+    kubeReserved:
+      cpu: {{ if $nc.kubeReserved }}{{ $nc.kubeReserved.cpu | default "200m" }}{{ else }}200m{{ end }}
+      memory: {{ if $nc.kubeReserved }}{{ $nc.kubeReserved.memory | default "100Mi" }}{{ else }}100Mi{{ end }}
+      ephemeral-storage: {{ if $nc.kubeReserved }}{{ $nc.kubeReserved.ephemeralStorage | default "3Gi" }}{{ else }}3Gi{{ end }}
+    evictionHard:
+      memory.available: {{ if $nc.evictionHard }}{{ $nc.evictionHard.memory.available | default "5%" }}{{ else }}5%{{ end }}
+      nodefs.available: {{ if $nc.evictionHard }}{{ $nc.evictionHard.nodefs.available | default "10%" }}{{ else }}10%{{ end }}
+      nodefs.inodesFree: {{ if $nc.evictionHard }}{{ $nc.evictionHard.nodefs.inodesFree | default "10%" }}{{ else }}10%{{ end }}
+    evictionSoft:
+      memory.available: {{ if $nc.evictionSoft }}{{ $nc.evictionSoft.memory.available | default "500Mi" }}{{ else }}500Mi{{ end }}
+      nodefs.available: {{ if $nc.evictionSoft }}{{ $nc.evictionSoft.nodefs.available | default "15%" }}{{ else }}15%{{ end }}
+      nodefs.inodesFree: {{ if $nc.evictionSoft }}{{ $nc.evictionSoft.nodefs.inodesFree | default "15%" }}{{ else }}15%{{ end }}
+    evictionSoftGracePeriod: 
+      memory.available: {{ if $nc.evictionSoftGracePeriod }}{{ $nc.evictionSoftGracePeriod.memory.available | default "1m" }}{{ else }}1m{{ end }}
+      nodefs.available: {{ if $nc.evictionSoftGracePeriod }}{{ $nc.evictionSoftGracePeriod.nodefs.available | default "1m30s" }}{{ else }}1m30s{{ end }}
+      nodefs.inodesFree: {{ if $nc.evictionSoftGracePeriod }}{{ $nc.evictionSoftGracePeriod.nodefs.inodesFree | default "2m" }}{{ else }}2m{{ end }}
+    evictionMaxPodGracePeriod: {{ default "60" $nc.evictionMaxPodGracePeriod }}
+    imageGCHighThresholdPercent: {{ default "85" $nc.imageGCHighThresholdPercent }}
+    imageGCLowThresholdPercent: {{ default "80" $nc.imageGCLowThresholdPercent }}
+    cpuCFSQuota: {{ default true $nc.cpuCFSQuota }}
+  amiFamily: {{ default $.Values.defaultAMIFamily $nc.amiFamily }}
+  subnetSelectorTerms:
+    {{- range $index, $subnet := $nc.subnetIds }}
+    - id: {{ $subnet }}
+    {{- end }}
+  securityGroupSelectorTerms:
+    {{- if $nc.securityGroupIds }}
+      {{- range $index, $securityGroup := $nc.securityGroupIds }}
+      - id: {{ $securityGroup }}
+      {{- end }}
+    {{- else }}
+      - tags:
+          kubernetes.io/cluster/{{ $.Values.app.settings.clusterName }}: owned
+    {{- end }}
+  role: {{ $nc.role }}
+  amiSelectorTerms:
+    {{- if $nc.amiSelectorTerms }}
+    {{- range $index, $selector := $nc.amiSelectorTerms }}
+    {{- range $key, $value := $selector }}
+    - {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- else }}
+    - alias: bottlerocket@latest
+    {{- end }}
+  {{- if $nc.capacityReservationSelectorTerms }}
+  capacityReservationSelectorTerms:
+    {{- range $index, $capacityReservationSelectorTerm := $nc.capacityReservationSelectorTerms }}
+    - {{ $capacityReservationSelectorTerm }}
+    {{- end }}
+  {{- end }}
+
+  {{- if $nc.blockDeviceMappings }}
+  blockDeviceMappings:
+    {{- range $index, $blockDeviceMapping := $nc.blockDeviceMappings }}
+    - deviceName: {{ $blockDeviceMapping.deviceName }}
+      ebs:
+        {{- if $blockDeviceMapping.ebs.volumeSize }}
+        volumeSize: {{ $blockDeviceMapping.ebs.volumeSize }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.volumeType }}
+        volumeType: {{ $blockDeviceMapping.ebs.volumeType }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.iops }}
+        iops: {{ $blockDeviceMapping.ebs.iops }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.encrypted }}
+        encrypted: {{ $blockDeviceMapping.ebs.encrypted }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.kmsKeyID }}
+        kmsKeyID: {{ $blockDeviceMapping.ebs.kmsKeyID }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.deleteOnTermination }}
+        deleteOnTermination: {{ $blockDeviceMapping.ebs.deleteOnTermination }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.throughput }}
+        throughput: {{ $blockDeviceMapping.ebs.throughput }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.snapshotID }}
+        snapshotID: {{ $blockDeviceMapping.ebs.snapshotID }}
+        {{- end }}
+        {{- if $blockDeviceMapping.ebs.volumeInitializationRate }}
+        volumeInitializationRate: {{ $blockDeviceMapping.ebs.volumeInitializationRate }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if $nc.userData }}
+  userData: |
+    {{ $nc.userData }}
+  {{- end }}
+{{- end }}

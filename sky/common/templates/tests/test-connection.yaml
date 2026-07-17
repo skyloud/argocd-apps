@@ -1,0 +1,21 @@
+{{- range $key, $val := .Values.services -}}
+{{- with $val }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "common.fullname" $ }}-{{ $key }}-test-connection"
+  labels:
+    {{- include "common.labels" $ | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "common.fullname" $ }}-{{ $key }}:{{ $.Values.service.port }}']
+  restartPolicy: Never
+
+{{- end }}
+---
+{{- end -}}

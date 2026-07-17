@@ -1,0 +1,1 @@
+{{- (.Files.Get "manifests/bitnami.yaml") | nindent 0 }}

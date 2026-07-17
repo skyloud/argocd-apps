@@ -1,0 +1,9 @@
+app:
+  alloy:
+    mounts:
+      dockercontainers: true
+      varlog: true
+    serviceMonitor:
+      enabled: true
+    nodeSelector: {}
+    tolerations: []

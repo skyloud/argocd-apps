@@ -1,0 +1,10 @@
+apiVersion: v2
+name: community-operator
+version: 0.13.0
+type: application
+
+dependencies:
+  - name: community-operator
+    version: ~0.13.0
+    repository: "https://mongodb.github.io/helm-charts"
+    alias: app

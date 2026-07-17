@@ -1,0 +1,23 @@
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+
+commonAnnotations:
+  grafana_folder: "Kubernetes"
+
+configMapGenerator:
+  - name: dashboard-k8s-global
+    files: [k8s-global.json]
+
+  - name: dashboard-k8s-single-node
+    files: [k8s-single-node.json]
+
+  - name: dashboard-k8s-pods
+    files: [k8s-pods.json]
+
+  - name: dashboard-k8s-namespaces
+    files: [k8s-namespaces.json]
+
+  - name: dashboard-k8s-event-exporter
+    files: [k8s-event-exporter.json]

@@ -1,0 +1,117 @@
+{{- range $name, $np := $.Values.app.nodePools }}
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "karpenter.labels" $ | nindent 4 }}
+spec:
+  {{- if and $np.replicas (gt $np.replicas 0) }}
+  replicas: {{ $np.replicas }}
+  {{- end }}
+  template:
+    metadata:
+      {{- if $np.labels }}
+      labels:
+        {{- range $key, $value := $np.labels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if $np.annotations }}
+      annotations:
+        {{- range $key, $value := $np.annotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+      {{- end }}
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: {{ printf "%s-node-class" $np.class }}
+      expireAfter: {{ default "Never" $np.expireAfter }}
+      requirements:
+        {{- $architectures := default (list "amd64") $np.architectures }}
+        {{- $capacityTypes := default (list "spot" "on-demand") $np.capacityTypes }}
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            {{- range $architectures }}
+            - {{ . | quote }}
+            {{- end }}
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            {{- range $capacityTypes }}
+            - {{ . | quote }}
+            {{- end }}
+        {{- if and $np.instanceCategories (gt (len $np.instanceCategories) 0) }}
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values:
+            {{- range $np.instanceCategories }}
+            - {{ . | quote }}
+            {{- end }}
+        {{- end }}
+        {{- if and $np.instanceTypes (gt (len $np.instanceTypes) 0) }}
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            {{- range $np.instanceTypes }}
+            - {{ . | quote }}
+            {{- end }}
+        {{- end }}
+        {{- if and $np.instanceCpus (gt (len $np.instanceCpus) 0) }}
+        - key: karpenter.k8s.aws/instance-cpu
+          operator: In
+          values:
+            {{- range $np.instanceCpus }}
+            - {{ . | toString | quote }}
+            {{- end }}
+        {{- end }}
+      {{- if and $np.taints (gt (len $np.taints) 0) }}
+      taints:
+        {{- range $np.taints }}
+        - key: {{ .key | quote }}
+          value: {{ default "" .value | quote }}
+          effect: {{ default "NoSchedule" .effect | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if and $np.startupTaints (gt (len $np.startupTaints) 0) }}
+      startupTaints:
+        {{- range $np.startupTaints }}
+        - key: {{ .key | quote }}
+          value: {{ default "" .value | quote }}
+          effect: {{ default "NoSchedule" .effect | quote }}
+        {{- end }}
+      {{- end }}
+  limits:
+    {{- if $np.limits.cpu }}
+    cpu: {{ $np.limits.cpu | quote }}
+    {{- end }}
+    {{- if $np.limits.memory }}
+    memory: {{ printf "%dGi" (int $np.limits.memory) }}
+    {{- end }}
+    {{- if $np.limits.gpu }}
+    nvidia.com/gpu: {{ $np.limits.gpu }}
+    {{- end }}
+  disruption:
+    consolidationPolicy: {{ default "WhenEmptyOrUnderutilized" $np.disruption.consolidationPolicy }}
+    consolidateAfter: {{ default "1m" $np.disruption.consolidateAfter }}
+    budgets:
+      {{- range $np.disruption.budgets }}
+      - nodes: {{ .nodes | quote }}
+        {{- if and .schedule (ne .schedule "") }}
+        schedule: {{ .schedule | quote }}
+        {{- end }}
+        {{- if and .duration (ne .duration "") }}
+        duration: {{ .duration | quote }}
+        {{- end }}
+        {{- if and .reasons (gt (len .reasons) 0) }}
+        reasons:
+          {{- range .reasons }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+{{- end }}

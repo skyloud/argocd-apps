@@ -1,0 +1,85 @@
+app:
+  rbac:
+    create: true
+
+  serviceMonitor:
+    enabled: true
+
+  global:
+    dnsService: "coredns"
+
+  loki:
+    # Multi tenancy can't be disabled
+    # auth_enabled: false
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 4096
+
+    frontend:
+      max_outstanding_per_tenant: 4096
+
+    limits_config:
+      reject_old_samples: true
+      reject_old_samples_max_age: "168h"
+      max_cache_freshness_per_query: "10m"
+      split_queries_by_interval: "30m"
+      max_query_parallelism: 32
+      ingestion_rate_mb: 20
+      ingestion_burst_size_mb: 100
+      volume_enabled: true
+
+  monitoring:
+    serviceMonitor:
+      enabled: true
+
+    selfMonitoring:
+      enabled: false
+      grafanaAgent:
+        installOperator: false
+
+    lokiCanary:
+      enabled: false
+
+    rules:
+      enabled: true
+      alerting: false
+
+  test:
+    enabled: false
+
+  lokiCanary:
+    enabled: false
+
+  gateway:
+    enabled: true
+    replicas: 1
+    service:
+      labels:
+        "prometheus.io/service-monitor": "false"
+
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 90
+      targetMemoryUtilizationPercentage: 80
+
+    verboseLogging: true
+    resources:
+      limits:
+        memory: "256Mi"
+
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+
+    ingress:
+      enabled: false
+
+    basicAuth:
+      enabled: false
+
+  networkPolicy:
+    enabled: false
+
+  minio:
+    enabled: true

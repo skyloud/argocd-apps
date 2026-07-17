@@ -1,0 +1,45 @@
+defaultAMIFamily: "Bottlerocket"
+
+app:
+  settings: 
+    clusterName: "my-cluster"
+# AWS node classes example:
+  nodeClasses:
+    # default:
+    #   amiFamily: "Bottlerocket"
+    #   role: "arn:aws:iam::123456789012:role/KarpenterNodeRole"
+    #   subnetIds:
+    #     - "subnet-01234567890123456"
+    #   securityGroupIds:
+    #     - "sg-01234567890123456"
+    #   amiSelectorTerms:
+    #     - alias: "bottlerocket@latest"
+    #   deviceMappings:
+    #     - deviceName: "/dev/xvda"
+    #       ebs:
+    #         volumeSize: "20Gi"
+    #         volumeType: "gp3"
+# AWS node pools example:
+  nodePools:
+    # default:
+    #   class: "default"
+    #   expireAfter: "720h"
+    #   capacityTypes: ["spot", "on-demand"]
+    #   architectures: ["amd64", "arm64"]
+    #   instanceCategories: ["c", "m", "r"]
+    #   instanceCpus: [2, 4, 8]
+    #   limits:
+    #     cpu: 200
+    #     memory: 500
+    #   disruption:
+    #     consolidationPolicy: "WhenEmptyOrUnderutilized"
+    #     consolidateAfter: "1m"
+    #     budgets:
+    #       - nodes: "15%"
+    #       - nodes: "3"
+    #       - nodes: "0"
+    #         schedule: "0 9 * * 0,6"
+    #         duration: "24h"
+    #       - nodes: "0"
+    #         schedule: "0 17 * * 1-5"
+    #         duration: "16h"

@@ -1,0 +1,87 @@
+excludedNamespaces: &excludedNamespaces [
+  "default",
+  "velero",
+  "trivy",
+  "falco",
+  "argocd",
+  "grafana",
+  "grafana-alloy",
+  "grafana-loki",
+  "grafana-mimir",
+  "loki",
+  "mimir",
+  "promtail",
+  "prometheus",
+  "monitoring",
+  "cert-manager",
+  "traefik",
+  "ingress-nginx",
+  "kube-node-lease",
+  "kube-public",
+  "kube-system"
+]
+
+app:
+  schedules:
+    daily:
+      schedule: "0 5 * * *"
+      template:
+        snapshotVolumes: false
+        storageLocation: "default"
+        ttl: "168h"
+        includedResources: ["*"]
+        excludedNamespaces: *excludedNamespaces
+    weekly:
+      schedule: "0 0 * * 0"
+      template:
+        snapshotVolumes: false
+        storageLocation: "default"
+        ttl: "2016h"
+        includedResources: ["*"]
+        excludedNamespaces: *excludedNamespaces
+    monthly:
+      schedule: "0 0 1 * *"
+      template:
+        snapshotVolumes: false
+        storageLocation: "default"
+        ttl: "8760h"
+        includedResources: ["*"]
+        excludedNamespaces: *excludedNamespaces
+  serviceAccount:
+    server:
+      create: true
+      name: "velero"
+  deployNodeAgent: false
+  nodeAgent:
+    privileged: true
+    tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "128Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1024Mi"
+    metrics:
+      enabled: true
+      scrapeInterval: "60s"
+  defaultVolumesToFsBackup: true
+  logFormat: "json"
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: true
+
+

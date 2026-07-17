@@ -1,0 +1,4 @@
+app:
+  deploymentType: Deployment
+  postgresql:
+    enabled: false

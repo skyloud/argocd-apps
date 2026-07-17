@@ -1,0 +1,23 @@
+app:
+  controller:
+    replicaCount: 2
+
+    terminationGracePeriodSeconds: 300
+
+    config:
+      log-format-escape-json: "true"
+      log-format-upstream: '{"timestamp":"$time_iso8601","user":"$remote_user","httpRequest":{"version":"$server_protocol","userAgent":"$http_user_agent","remoteIp":"$remote_addr","forwardedIp":"$http_x_forwarded_for","method":"$request_method","host":"$host","path":"$uri","query":"$args","original":"$request_uri","bodyBytes":"$body_bytes_sent","bytes":"$request_length"},"httpResponse":{"bodyBytes":"$upstream_response_length","bytes":"$bytes_sent","time":"$request_time","status":"$status"},"httpUpstream":{"addr":"$upstream_addr","proxyName":"$proxy_upstream_name","proxyAlternativeName":"$proxy_alternative_upstream_name","status":"$upstream_status","bodyBytes":"$upstream_response_length","time":"$upstream_response_time"}}'
+      ssl-protocols: "TLSv1.2 TLSv1.3"
+      server-tokens: "false"
+      hide-headers: "server,x-powered-by"
+      use-forwarded-headers: "true"
+
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
+
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
