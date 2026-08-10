@@ -47,3 +47,5 @@ app:
 
   serviceMonitor:
     enabled: true
+
+  targetGroupBindings: {}
