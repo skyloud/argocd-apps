@@ -154,8 +154,8 @@ pgdog:
     postgres: 5
   image:
     repository: ghcr.io/pgdogdev/pgdog
-    tag: latest
-    pullPolicy: Always
+    tag: "0.1.52"
+    pullPolicy: IfNotPresent
   # Renders users.toml from Secrets at pod start (never written to a ConfigMap
   # in plaintext).
   initImage:
