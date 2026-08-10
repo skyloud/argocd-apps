@@ -127,6 +127,19 @@ resources as any other pod, so a node autoscaler (e.g. Karpenter) provisions
 capacity for them the same way it would for any other workload. Scale reads
 by raising `cnpg.instances` and/or `pgdog.replicaCount`.
 
+### Postgres in its own namespace
+
+By default the CNPG `Cluster` lives in this release's own namespace, same as
+every other resource. Set `postgres.namespace` to place it in a different
+namespace instead — the chart then also renders that `Namespace` and a Job
+(`templates/jobs/secret-sync.yaml`) that mirrors the CNPG-generated app/
+superuser Secrets into this release's namespace under the same names, since
+Kubernetes has no cross-namespace `secretKeyRef`. That Job re-runs on every
+`helm upgrade` so a later credential rotation eventually propagates; it's
+scoped via RBAC to read only those two specific Secrets by name in the
+Postgres namespace, and to write only those same two names in this
+release's namespace.
+
 Not everything goes through PgDog — some services need a direct connection
 to the primary:
 

@@ -9,11 +9,19 @@ cluster (CRD postgresql.cnpg.io/v1).
 {{- if eq $tag "latest" -}}
 {{- fail "cnpg.image.tag cannot be 'latest': CNPG's admission webhook rejects unpinned tags (it can't detect upgrades). Pin an explicit version." -}}
 {{- end -}}
+{{- /*
+When postgres.namespace differs from this release's namespace, that
+namespace is NOT created by this chart — same convention as every other
+namespace this org's charts run in (created by the caller: Terraform,
+`CreateNamespace=true`, or a plain `kubectl create namespace`). The chart
+creating it itself would race the caller that also needs to pre-create
+Secrets there before this Cluster can bootstrap.
+*/}}
 apiVersion: {{ .Values.cnpg.apiVersion }}
 kind: Cluster
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "supabase.postgresNamespace" . }}
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
     {{- with .Values.cnpg.labels }}
@@ -42,11 +50,19 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 
+  {{- /*
+  `owner: "app"` is hardcoded and must match the `username` key of whichever
+  secret ends up here — either CNPG's own auto-generated one (which always
+  uses this exact owner name), or a pre-existing secret you point at via
+  `postgres.appSecret.name` / `cnpg.bootstrap.initdb.secret.name` (the
+  latter wins if both are set; usually you only need to set the former —
+  every consuming service already reads it as the "app" credentials).
+  */}}
   bootstrap:
     initdb:
       database: {{ include "supabase.dbName" . | quote }}
       owner: "app"
-      {{- with .Values.cnpg.bootstrap.initdb.secret.name }}
+      {{- with (default .Values.postgres.appSecret.name .Values.cnpg.bootstrap.initdb.secret.name) }}
       secret:
         name: {{ . | quote }}
       {{- end }}

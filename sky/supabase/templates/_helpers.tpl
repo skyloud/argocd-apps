@@ -43,14 +43,43 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default (printf "%s-postgres" .Release.Name) .Values.cnpg.name -}}
 {{- end }}
 
-{{/* Read/write (primary) Service — CNPG convention `{cluster}-rw`. */}}
+{{/* ==========================================================================
+     Postgres namespace — normally the same namespace as everything else in
+     this release. Set `postgres.namespace` to place the CNPG Cluster (and
+     nothing else) in a different namespace; the chart then also renders
+     that Namespace and a Job that mirrors the CNPG-generated app/superuser
+     Secrets into this release's own namespace (Kubernetes Secrets can't be
+     referenced across namespaces directly).
+     ========================================================================= */}}
+{{- define "supabase.postgresNamespace" -}}
+{{- default .Release.Namespace .Values.postgres.namespace -}}
+{{- end }}
+
+{{/* Non-empty only when postgres.namespace is set AND differs from this release's namespace. */}}
+{{- define "supabase.postgresNamespaceIsSeparate" -}}
+{{- if and .Values.postgres.namespace (ne .Values.postgres.namespace .Release.Namespace) -}}1{{- end -}}
+{{- end }}
+
+{{/* Read/write (primary) Service — CNPG convention `{cluster}-rw`. Includes
+     the namespace segment when Postgres lives in a separate namespace
+     (K8s Service DNS resolves `<svc>.<namespace>` from any namespace). */}}
 {{- define "supabase.cnpgRwService" -}}
-{{- printf "%s-rw" (include "supabase.cnpgClusterName" .) -}}
+{{- $svc := printf "%s-rw" (include "supabase.cnpgClusterName" .) -}}
+{{- if include "supabase.postgresNamespaceIsSeparate" . -}}
+{{- printf "%s.%s" $svc (include "supabase.postgresNamespace" .) -}}
+{{- else -}}
+{{- $svc -}}
+{{- end -}}
 {{- end }}
 
 {{/* Read-only (any replica) Service — CNPG convention `{cluster}-ro`. */}}
 {{- define "supabase.cnpgRoService" -}}
-{{- printf "%s-ro" (include "supabase.cnpgClusterName" .) -}}
+{{- $svc := printf "%s-ro" (include "supabase.cnpgClusterName" .) -}}
+{{- if include "supabase.postgresNamespaceIsSeparate" . -}}
+{{- printf "%s.%s" $svc (include "supabase.postgresNamespace" .) -}}
+{{- else -}}
+{{- $svc -}}
+{{- end -}}
 {{- end }}
 
 {{/* App role Secret (basic-auth: username/password) — CNPG convention `{cluster}-app`,

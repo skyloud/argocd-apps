@@ -45,6 +45,18 @@ postgres:
   # CNPG default naming `{cluster}-app`.
   appSecret:
     name: ""
+  # Empty (default) = the CNPG Cluster lives in this release's own
+  # namespace, same as everything else. Set to place Postgres in a
+  # different namespace instead.
+  #
+  # This chart does NOT create that namespace, and does NOT bridge Secrets
+  # across namespaces — Kubernetes has no cross-namespace secretKeyRef, so
+  # whoever generates the Postgres credentials (Terraform, typically) needs
+  # to create an IDENTICAL Secret (same name, same `username`/`password`
+  # keys) in both this namespace and `postgres.namespace`, and this chart's
+  # `postgres.appSecret.name` / `cnpg.superuserSecret.name` need to point at
+  # it. See README "Postgres in its own namespace".
+  namespace: ""
 
 cnpg:
   enabled: true
@@ -77,17 +89,17 @@ cnpg:
     # your migrations require (e.g. postgis, pg_stat_statements).
     sharedPreloadLibraries: []
     parameters:
-      max_connections: "200"
-      shared_buffers: "256MB"
+      max_connections: "300"
+      shared_buffers: "512MB"
       work_mem: "8MB"
-      maintenance_work_mem: "128MB"
-      effective_cache_size: "768MB"
+      maintenance_work_mem: "256MB"
+      effective_cache_size: "1536MB"
       # Required by Realtime (CDC via logical replication).
       wal_level: logical
       max_wal_senders: "10"
       max_replication_slots: "10"
   storage:
-    size: 20Gi
+    size: 50Gi
     storageClass: ""
   monitoring:
     # Requires the monitoring.coreos.com/v1 CRDs (Prometheus Operator).
