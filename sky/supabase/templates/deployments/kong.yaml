@@ -1,0 +1,615 @@
+{{- /*
+Kong API Gateway — single HTTP entrypoint (/auth/v1, /rest/v1, /graphql/v1,
+/realtime/v1, /storage/v1, /functions/v1, /pg, and Studio at `/`).
+
+Declarative config only (KONG_DATABASE=off). Consumer API keys are injected
+at container start by `wrapper.sh` (envsubst-style `sed` from the JWT
+Secret) rather than baked into the ConfigMap in plaintext.
+*/}}
+{{- if .Values.kong.enabled -}}
+{{- $svc := dict "root" . "svc" "kong" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- if .Values.kong.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.kong.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+data:
+  wrapper.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    if [ -n "${SUPABASE_SECRET_KEY:-}" ] && [ -n "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+      export LUA_AUTH_EXPR="\$((headers.authorization ~= nil and headers.authorization:sub(1, 10) ~= 'Bearer sb_' and headers.authorization) or (headers.apikey == '${SUPABASE_SECRET_KEY}' and 'Bearer ${SERVICE_ROLE_KEY_ASYMMETRIC}') or (headers.apikey == '${SUPABASE_PUBLISHABLE_KEY}' and 'Bearer ${ANON_KEY_ASYMMETRIC}') or headers.apikey)"
+      export LUA_RT_WS_EXPR="\$((query_params.apikey == '${SUPABASE_SECRET_KEY}' and '${SERVICE_ROLE_KEY_ASYMMETRIC}') or (query_params.apikey == '${SUPABASE_PUBLISHABLE_KEY}' and '${ANON_KEY_ASYMMETRIC}') or query_params.apikey)"
+    else
+      export LUA_AUTH_EXPR="\$((headers.authorization ~= nil and headers.authorization:sub(1, 10) ~= 'Bearer sb_' and headers.authorization) or headers.apikey)"
+      export LUA_RT_WS_EXPR="\$(query_params.apikey)"
+    fi
+
+    sed \
+      -e "s|\${SUPABASE_ANON_KEY}|${SUPABASE_ANON_KEY}|" \
+      -e "s|\${SUPABASE_SERVICE_KEY}|${SUPABASE_SERVICE_KEY}|" \
+      -e "s|\${SUPABASE_PUBLISHABLE_KEY}|${SUPABASE_PUBLISHABLE_KEY:-}|" \
+      -e "s|\${SUPABASE_SECRET_KEY}|${SUPABASE_SECRET_KEY:-}|" \
+      -e "s|\${ANON_KEY_ASYMMETRIC}|${ANON_KEY_ASYMMETRIC:-}|" \
+      -e "s|\${SERVICE_ROLE_KEY_ASYMMETRIC}|${SERVICE_ROLE_KEY_ASYMMETRIC:-}|" \
+      -e "s|\${LUA_AUTH_EXPR}|${LUA_AUTH_EXPR}|" \
+      -e "s|\${LUA_RT_WS_EXPR}|${LUA_RT_WS_EXPR}|" \
+      -e "s|\${STUDIO_USERNAME}|${STUDIO_USERNAME:-}|" \
+      -e "s|\${STUDIO_PASSWORD}|${STUDIO_PASSWORD:-}|" \
+      /usr/local/kong/template.yml \
+      > /usr/local/kong/kong.yml
+
+    sed -i '/^[[:space:]]*- key:[[:space:]]*$/d' /usr/local/kong/kong.yml
+
+    exec /docker-entrypoint.sh kong docker-start
+  template.yml: |
+    _format_version: '3.0'
+    _transform: true
+
+    consumers:
+    {{- if .Values.studio.basicAuth.name }}
+      - username: STUDIO
+    {{- end }}
+      - username: anon
+        keyauth_credentials:
+          - key: ${SUPABASE_ANON_KEY}
+          {{- if .Values.jwtApiKeys.name }}
+          - key: ${SUPABASE_PUBLISHABLE_KEY}
+          {{- end }}
+      - username: service_role
+        keyauth_credentials:
+          - key: ${SUPABASE_SERVICE_KEY}
+          {{- if .Values.jwtApiKeys.name }}
+          - key: ${SUPABASE_SECRET_KEY}
+          {{- end }}
+    acls:
+      - consumer: anon
+        group: anon
+      - consumer: service_role
+        group: admin
+    {{- if .Values.studio.basicAuth.name }}
+    basicauth_credentials:
+      - consumer: STUDIO
+        username: ${STUDIO_USERNAME}
+        password: ${STUDIO_PASSWORD}
+    {{- end }}
+    services:
+    {{- if .Values.auth.enabled }}
+      - name: auth-v1-open
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "auth") }}:{{ .Values.auth.service.port }}/verify
+        routes:
+          - name: auth-v1-open
+            strip_path: true
+            paths:
+              - /auth/v1/verify
+        plugins:
+          - name: cors
+      - name: auth-v1-open-callback
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "auth") }}:{{ .Values.auth.service.port }}/callback
+        routes:
+          - name: auth-v1-open-callback
+            strip_path: true
+            paths:
+              - /auth/v1/callback
+        plugins:
+          - name: cors
+      - name: auth-v1-open-authorize
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "auth") }}:{{ .Values.auth.service.port }}/authorize
+        routes:
+          - name: auth-v1-open-authorize
+            strip_path: true
+            paths:
+              - /auth/v1/authorize
+        plugins:
+          - name: cors
+      - name: auth-v1-open-jwks
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "auth") }}:{{ .Values.auth.service.port }}/.well-known/jwks.json
+        routes:
+          - name: auth-v1-open-jwks
+            strip_path: true
+            paths:
+              - /auth/v1/.well-known/jwks.json
+        plugins:
+          - name: cors
+      - name: auth-v1
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "auth") }}:{{ .Values.auth.service.port }}
+        routes:
+          - name: auth-v1-all
+            strip_path: true
+            paths:
+              - /auth/v1/
+        plugins:
+          - name: cors
+          - name: key-auth
+            config:
+              hide_credentials: false
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+              replace:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+          - name: acl
+            config:
+              hide_groups_header: true
+              allow:
+                - admin
+                - anon
+    {{- end }}
+    {{- if .Values.rest.enabled }}
+      - name: rest-v1
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "rest") }}:{{ .Values.rest.service.port }}/
+        routes:
+          - name: rest-v1-all
+            strip_path: true
+            paths:
+              - /rest/v1/
+        plugins:
+          - name: cors
+          - name: key-auth
+            config:
+              hide_credentials: false
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+              replace:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+          - name: acl
+            config:
+              hide_groups_header: true
+              allow:
+                - admin
+                - anon
+      - name: graphql-v1
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "rest") }}:{{ .Values.rest.service.port }}/rpc/graphql
+        routes:
+          - name: graphql-v1-all
+            strip_path: true
+            paths:
+              - /graphql/v1
+        plugins:
+          - name: cors
+          - name: key-auth
+            config:
+              hide_credentials: false
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "Content-Profile: graphql_public"
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+              replace:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+          - name: acl
+            config:
+              hide_groups_header: true
+              allow:
+                - admin
+                - anon
+    {{- end }}
+    {{- if .Values.realtime.enabled }}
+      - name: realtime-v1-ws
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "realtime") }}:{{ .Values.realtime.service.port }}/socket
+        protocol: ws
+        routes:
+          - name: realtime-v1-ws
+            strip_path: true
+            paths:
+              - /realtime/v1/
+        plugins:
+          - name: cors
+          - name: key-auth
+            config:
+              hide_credentials: false
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "x-api-key:${LUA_RT_WS_EXPR}"
+              replace:
+                querystring:
+                  - "apikey:${LUA_RT_WS_EXPR}"
+          - name: acl
+            config:
+              hide_groups_header: true
+              allow:
+                - admin
+                - anon
+      - name: realtime-v1-rest
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "realtime") }}:{{ .Values.realtime.service.port }}/api
+        protocol: http
+        routes:
+          - name: realtime-v1-rest
+            strip_path: true
+            paths:
+              - /realtime/v1/api
+        plugins:
+          - name: cors
+          - name: key-auth
+            config:
+              hide_credentials: false
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+              replace:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+          - name: acl
+            config:
+              hide_groups_header: true
+              allow:
+                - admin
+                - anon
+    {{- end }}
+    {{- if .Values.storage.enabled }}
+      - name: storage-v1
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "storage") }}:{{ .Values.storage.service.port }}/
+        routes:
+          # Destructive admin routes (empty/delete a bucket) additionally require
+          # basic-auth (defense in depth): with no `studio.basicAuth.name` set,
+          # no consumer credential exists and these routes are always 401 via
+          # Kong. Reachable in-cluster directly against the Storage Service instead.
+          - name: storage-v1-bucket-empty-restricted
+            methods: ["POST"]
+            paths:
+              - /storage/v1(/bucket/[^/]+/empty)$
+            strip_path: true
+            regex_priority: 200
+            plugins:
+              - name: basic-auth
+                config:
+                  hide_credentials: true
+          - name: storage-v1-bucket-delete-restricted
+            methods: ["DELETE"]
+            paths:
+              - /storage/v1(/bucket/[^/]+)$
+            strip_path: true
+            regex_priority: 200
+            plugins:
+              - name: basic-auth
+                config:
+                  hide_credentials: true
+          - name: storage-v1-all
+            strip_path: true
+            paths:
+              - /storage/v1/
+        plugins:
+          - name: cors
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+              replace:
+                headers:
+                  - "Authorization: ${LUA_AUTH_EXPR}"
+    {{- end }}
+    {{- if .Values.imgproxy.enabled }}
+      - name: imgproxy
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "imgproxy") }}:{{ .Values.imgproxy.service.port }}/
+        routes:
+          - name: imgproxy
+            strip_path: true
+            paths:
+              - /imgproxy/
+        plugins:
+          - name: cors
+    {{- end }}
+    {{- if .Values.functions.enabled }}
+      - name: functions-v1
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "functions") }}:{{ .Values.functions.service.port }}/
+        routes:
+          - name: functions-v1-all
+            strip_path: true
+            paths:
+              - /functions/v1/
+        plugins:
+          - name: cors
+    {{- end }}
+    {{- if .Values.meta.enabled }}
+      - name: meta
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "meta") }}:{{ .Values.meta.service.port }}/
+        routes:
+          - name: meta-all
+            strip_path: true
+            paths:
+              - /pg/
+        plugins:
+          - name: key-auth
+            config:
+              hide_credentials: false
+          - name: acl
+            config:
+              hide_groups_header: true
+              allow:
+                - admin
+    {{- end }}
+    {{- if .Values.studio.enabled }}
+      - name: dashboard
+        url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "studio") }}:{{ .Values.studio.service.port }}/
+        routes:
+          - name: dashboard-all
+            strip_path: true
+            paths:
+              - /
+    {{- if .Values.studio.basicAuth.name }}
+        plugins:
+          - name: cors
+          - name: basic-auth
+            config:
+              hide_credentials: true
+    {{- end }}
+    {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.kong.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.kong.service.type }}
+  ports:
+    - port: {{ .Values.kong.service.port }}
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "supabase.svcSelectorLabels" $svc | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  {{- if not .Values.kong.autoscaling.enabled }}
+  replicas: {{ .Values.kong.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.kong.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.kong.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.kong.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kong
+          {{- with .Values.kong.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.kong.image.repository }}:{{ .Values.kong.image.tag }}"
+          imagePullPolicy: {{ .Values.kong.image.pullPolicy }}
+          command: ["/bin/bash"]
+          args: ["/scripts/wrapper.sh"]
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_DECLARATIVE_CONFIG
+              value: /usr/local/kong/kong.yml
+            - name: KONG_DNS_ORDER
+              value: LAST,A,CNAME
+            - name: KONG_PLUGINS
+              value: request-transformer,cors,key-auth,acl,basic-auth
+            - name: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE
+              value: "160k"
+            - name: KONG_NGINX_PROXY_PROXY_BUFFERS
+              value: "64 160k"
+            - name: KONG_LOG_LEVEL
+              value: warn
+            {{- with .Values.kong.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: anonKey
+            - name: SUPABASE_SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: serviceKey
+            {{- if .Values.jwtApiKeys.name }}
+            - name: SUPABASE_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.jwtApiKeys.name | quote }}
+                  key: supabasePublishableKey
+            - name: SUPABASE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.jwtApiKeys.name | quote }}
+                  key: supabaseSecretKey
+            - name: ANON_KEY_ASYMMETRIC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.jwtApiKeys.name | quote }}
+                  key: anonKeyAsymmetric
+            - name: SERVICE_ROLE_KEY_ASYMMETRIC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.jwtApiKeys.name | quote }}
+                  key: serviceRoleKeyAsymmetric
+            {{- end }}
+            {{- if .Values.studio.basicAuth.name }}
+            - name: STUDIO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.studio.basicAuth.name | quote }}
+                  key: username
+            - name: STUDIO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.studio.basicAuth.name | quote }}
+                  key: password
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          {{- with .Values.kong.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.kong.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.kong.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/kong/template.yml
+              subPath: template.yml
+            - name: wrapper
+              mountPath: /scripts
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}
+            defaultMode: 0755
+            items:
+              - key: template.yml
+                path: template.yml
+        - name: wrapper
+          configMap:
+            name: {{ $fullname }}
+            defaultMode: 0755
+            items:
+              - key: wrapper.sh
+                path: wrapper.sh
+      {{- with .Values.kong.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kong.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kong.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.kong.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.kong.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.kong.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.kong.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.kong.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths | default (list (dict "path" "/" "pathType" "Prefix")) }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ $fullname }}
+                port:
+                  number: {{ $.Values.kong.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+---
+{{- if .Values.kong.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}
+  minReplicas: {{ .Values.kong.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.kong.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.kong.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.kong.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.kong.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.kong.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

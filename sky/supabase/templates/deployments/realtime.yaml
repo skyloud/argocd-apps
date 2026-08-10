@@ -1,0 +1,218 @@
+{{- /*
+Realtime — WebSocket server broadcasting Postgres changes via logical
+replication (owns a replication slot). DB_HOST direct on the primary:
+replication slots can't be shared behind a transaction pooler.
+*/}}
+{{- if .Values.realtime.enabled -}}
+{{- $svc := dict "root" . "svc" "realtime" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- if .Values.realtime.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.realtime.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.realtime.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.realtime.service.type }}
+  ports:
+    - port: {{ .Values.realtime.service.port }}
+      targetPort: 4000
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "supabase.svcSelectorLabels" $svc | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  {{- if not .Values.realtime.autoscaling.enabled }}
+  replicas: {{ .Values.realtime.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.realtime.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.realtime.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.realtime.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: realtime
+          {{- with .Values.realtime.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.realtime.image.repository }}:{{ .Values.realtime.image.tag }}"
+          imagePullPolicy: {{ .Values.realtime.image.pullPolicy }}
+          command: ["/bin/sh"]
+          args: ["-c", "/app/bin/migrate && /app/bin/realtime eval 'Realtime.Release.seeds(Realtime.Repo)' && /app/bin/server"]
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "4000"
+            - name: DB_HOST
+              value: {{ include "supabase.cnpgRwService" . | quote }}
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              value: supabase_admin
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.cnpgAppSecretName" . | quote }}
+                  key: password
+            - name: DB_NAME
+              value: {{ include "supabase.dbName" . | quote }}
+            # Dedicated "realtime admin" connection used by the janitor /
+            # maintenance task since Realtime v2.111.x. Without it, seeds.exs
+            # falls back to the upstream default (`supabase_realtime_admin` /
+            # `postgres`) with the wrong password -> crashloop. The role must
+            # be created by your migrations' bootstrap SQL with REPLICATION
+            # and the same app password (see README "Bootstrapping Supabase
+            # roles").
+            - name: DB_USER_REALTIME
+              value: supabase_realtime_admin
+            - name: DB_PASS_REALTIME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.cnpgAppSecretName" . | quote }}
+                  key: password
+            - name: DB_SSL
+              value: "false"
+            - name: DB_AFTER_CONNECT_QUERY
+              value: "SET search_path TO _realtime"
+            - name: DB_ENC_KEY
+              value: supabaserealtime
+            # Fly.io-origin constants Realtime still expects at boot; values are placeholders.
+            - name: FLY_ALLOC_ID
+              value: "fly123"
+            - name: FLY_APP_NAME
+              value: realtime
+            - name: ENABLE_TAILSCALE
+              value: "false"
+            - name: APP_NAME
+              value: realtime
+            - name: ERL_AFLAGS
+              value: "-proto_dist inet_tcp"
+            - name: RLIMIT_NOFILE
+              value: "10000"
+            - name: DNS_NODES
+              value: "''"
+            - name: SEED_SELF_HOST
+              value: "true"
+            - name: RUN_JANITOR
+              value: "true"
+            - name: SELF_HOST_TENANT_NAME
+              value: {{ $fullname | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            - name: API_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            # Required since Realtime v2.107.x to authenticate its own /metrics endpoint.
+            - name: METRICS_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.secret.name" (dict "root" . "cfg" .Values.realtime.encryptionSecret "auto" "realtime") | quote }}
+                  key: secretKeyBase
+            {{- with .Values.realtime.tenantExternalId }}
+            - name: TENANT_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.realtime.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.realtime.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.realtime.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.realtime.livenessProbe | nindent 12 }}
+          {{- else }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- end }}
+          {{- with .Values.realtime.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.realtime.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.realtime.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.realtime.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.realtime.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.realtime.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.realtime.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

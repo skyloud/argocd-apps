@@ -1,0 +1,24 @@
+apiVersion: v2
+name: supabase
+description: >-
+  Generic, self-contained Helm chart for self-hosting Supabase on Kubernetes:
+  CloudNativePG-managed Postgres (1 primary + N read replicas) fronted by
+  PgDog (pooling + automatic read/write split), the standard Supabase
+  services (PostgREST, GoTrue, Realtime, Storage API, postgres-meta, Studio,
+  Kong, imgproxy, Edge Functions), and a generic SQL migrations runner.
+  Edge Functions code and SQL migrations are supplied as separate OCI images
+  mounted read-only via Kubernetes ImageVolume (KEP-4639) — no PVC, no
+  custom application image required.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://supabase.com
+sources:
+  - https://github.com/supabase/supabase
+  - https://cloudnative-pg.io
+  - https://pgdog.dev
+keywords:
+  - supabase
+  - postgres
+  - cloudnative-pg
+  - pgdog

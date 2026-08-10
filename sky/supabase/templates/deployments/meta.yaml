@@ -1,0 +1,154 @@
+{{- /*
+postgres-meta — admin API over the Postgres schema, consumed by Studio.
+Routed through PgDog.
+*/}}
+{{- if .Values.meta.enabled -}}
+{{- $svc := dict "root" . "svc" "meta" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- if .Values.meta.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.meta.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.meta.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.meta.service.type }}
+  ports:
+    - port: {{ .Values.meta.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "supabase.svcSelectorLabels" $svc | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  replicas: {{ .Values.meta.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.meta.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.meta.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.meta.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: meta
+          {{- with .Values.meta.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.meta.image.repository }}:{{ .Values.meta.image.tag }}"
+          imagePullPolicy: {{ .Values.meta.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PG_META_PORT
+              value: "8080"
+            - name: PG_META_DB_HOST
+              value: {{ include "supabase.svcFullname" (dict "root" . "svc" "pgdog") | quote }}
+            - name: PG_META_DB_PORT
+              value: "5432"
+            - name: PG_META_DB_NAME
+              value: {{ include "supabase.dbName" . | quote }}
+            - name: PG_META_DB_USER
+              value: supabase_admin
+            - name: PG_META_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.cnpgAppSecretName" . | quote }}
+                  key: password
+            - name: PG_META_DB_SSL_MODE
+              value: disable
+            - name: CRYPTO_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.secret.name" (dict "root" . "cfg" .Values.meta.encryptionSecret "auto" "meta") | quote }}
+                  key: cryptoKey
+            {{- with .Values.meta.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.meta.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.meta.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.meta.livenessProbe | nindent 12 }}
+          {{- else }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          {{- with .Values.meta.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.meta.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.meta.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.meta.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

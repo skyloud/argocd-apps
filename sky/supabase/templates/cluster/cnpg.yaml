@@ -1,0 +1,110 @@
+{{- /*
+CloudNativePG Cluster CR. Requires the CNPG operator installed on the target
+cluster (CRD postgresql.cnpg.io/v1).
+*/}}
+{{- if .Values.cnpg.enabled }}
+{{- $name := include "supabase.cnpgClusterName" . -}}
+{{- $repo := required "cnpg.image.repository is required when cnpg.enabled=true" .Values.cnpg.image.repository -}}
+{{- $tag := required "cnpg.image.tag is required when cnpg.enabled=true" .Values.cnpg.image.tag -}}
+{{- if eq $tag "latest" -}}
+{{- fail "cnpg.image.tag cannot be 'latest': CNPG's admission webhook rejects unpinned tags (it can't detect upgrades). Pin an explicit version." -}}
+{{- end -}}
+apiVersion: {{ .Values.cnpg.apiVersion }}
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+    {{- with .Values.cnpg.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.cnpg.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  imageName: {{ printf "%s:%s" $repo $tag | quote }}
+  {{- with .Values.cnpg.image.pullPolicy }}
+  imagePullPolicy: {{ . }}
+  {{- end }}
+  instances: {{ .Values.cnpg.instances }}
+  primaryUpdateMethod: {{ .Values.cnpg.primaryUpdateMethod | default "switchover" }}
+  enableSuperuserAccess: {{ .Values.cnpg.enableSuperuserAccess }}
+  {{- with .Values.cnpg.superuserSecret.name }}
+  superuserSecret:
+    name: {{ . | quote }}
+  {{- end }}
+
+  {{- $pullSecrets := .Values.cnpg.imagePullSecrets | default .Values.registryPullSecrets }}
+  {{- with $pullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  bootstrap:
+    initdb:
+      database: {{ include "supabase.dbName" . | quote }}
+      owner: "app"
+      {{- with .Values.cnpg.bootstrap.initdb.secret.name }}
+      secret:
+        name: {{ . | quote }}
+      {{- end }}
+
+  {{- with .Values.cnpg.postgresql }}
+  postgresql:
+    {{- with .sharedPreloadLibraries }}
+    shared_preload_libraries:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .parameters }}
+    parameters:
+      {{- range $k, $v := . }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  storage:
+    size: {{ .Values.cnpg.storage.size }}
+    {{- with .Values.cnpg.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+
+  {{- if .Values.cnpg.backup.enabled }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      enabled: true
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ required "cnpg.backup.objectName is required when cnpg.backup.enabled=true" .Values.cnpg.backup.objectName | quote }}
+  {{- end }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.cnpg.monitoring.enablePodMonitor }}
+
+  {{- with .Values.cnpg.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- /*
+  CNPG's Cluster CRD nests nodeSelector/tolerations under spec.affinity (its
+  own CNPG-specific affinity type, not a stock PodSpec.affinity) — NOT at
+  spec top-level like a normal Pod. `cnpg.affinity` can carry any other
+  CNPG-specific affinity field (nodeAffinity, enablePodAntiAffinity, ...).
+  */}}
+  {{- if or .Values.cnpg.nodeSelector .Values.cnpg.tolerations .Values.cnpg.affinity }}
+  affinity:
+    {{- with .Values.cnpg.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cnpg.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cnpg.affinity }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

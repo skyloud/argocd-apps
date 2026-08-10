@@ -1,0 +1,288 @@
+{{- /*
+Storage API. Routed through PgDog. Backend: local disk (PVC, default) or any
+S3-compatible provider when `storage.s3.enabled=true`.
+*/}}
+{{- if .Values.storage.enabled -}}
+{{- $svc := dict "root" . "svc" "storage" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- if .Values.storage.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.storage.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+{{- if not .Values.storage.s3.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.storage.fileStorage.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.fileStorage.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.storage.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.storage.service.type }}
+  ports:
+    - port: {{ .Values.storage.service.port }}
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "supabase.svcSelectorLabels" $svc | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  {{- if not .Values.storage.autoscaling.enabled }}
+  replicas: {{ .Values.storage.replicaCount }}
+  {{- end }}
+  {{- if not .Values.storage.s3.enabled }}
+  strategy:
+    # A local-disk PVC is typically RWO — avoid two pods fighting over it
+    # mid-rollout.
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.storage.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.storage.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.storage.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: storage
+          {{- with .Values.storage.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.storage.image.repository }}:{{ .Values.storage.image.tag }}"
+          imagePullPolicy: {{ .Values.storage.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          env:
+            # DB via PgDog (automatic read/write split).
+            - name: DB_HOST
+              value: {{ include "supabase.svcFullname" (dict "root" . "svc" "pgdog") | quote }}
+            - name: DB_USER
+              value: supabase_storage_admin
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_DRIVER
+              value: postgres
+            - name: DB_SSL
+              value: disable
+            - name: REQUEST_ALLOW_X_FORWARDED_PATH
+              value: "true"
+            - name: TENANT_ID
+              value: stub
+            - name: STORAGE_BACKEND
+              value: {{ .Values.storage.s3.enabled | ternary "s3" "file" }}
+            {{- if .Values.storage.s3.enabled }}
+            - name: GLOBAL_S3_BUCKET
+              value: {{ required "storage.s3.bucket is required when storage.s3.enabled=true" .Values.storage.s3.bucket | quote }}
+            - name: REGION
+              value: {{ .Values.storage.s3.region | quote }}
+            {{- with .Values.storage.s3.endpoint }}
+            - name: GLOBAL_S3_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.storage.s3.forcePathStyle }}
+            - name: GLOBAL_S3_FORCE_PATH_STYLE
+              value: "true"
+            {{- end }}
+            {{- with .Values.storage.s3.secret.name }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: keyId
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: accessKey
+            {{- end }}
+            {{- else }}
+            - name: FILE_STORAGE_BACKEND_PATH
+              value: /var/lib/storage
+            {{- end }}
+            - name: FILE_SIZE_LIMIT
+              value: {{ .Values.storage.fileSizeLimit | quote }}
+            {{- with .Values.storage.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.rest.enabled }}
+            - name: POSTGREST_URL
+              value: "http://{{ include "supabase.svcFullname" (dict "root" . "svc" "rest") }}:{{ .Values.rest.service.port }}"
+            {{- end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.cnpgAppSecretName" . | quote }}
+                  key: password
+            - name: DB_NAME
+              value: {{ include "supabase.dbName" . | quote }}
+            - name: DATABASE_URL
+              value: "$(DB_DRIVER)://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?search_path=auth&sslmode=$(DB_SSL)"
+            - name: PGRST_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            - name: ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: anonKey
+            - name: SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: serviceKey
+            {{- if .Values.imgproxy.enabled }}
+            - name: ENABLE_IMAGE_TRANSFORMATION
+              value: "true"
+            - name: IMGPROXY_URL
+              value: "http://{{ include "supabase.svcFullname" (dict "root" . "svc" "imgproxy") }}:{{ .Values.imgproxy.service.port }}"
+            {{- end }}
+          {{- with .Values.storage.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.storage.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.storage.livenessProbe | nindent 12 }}
+          {{- else }}
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          {{- with .Values.storage.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.storage.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- with .Values.storage.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if not .Values.storage.s3.enabled }}
+            - name: data
+              mountPath: /var/lib/storage
+            {{- end }}
+      volumes:
+        {{- with .Values.storage.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if not .Values.storage.s3.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-data
+        {{- end }}
+      {{- with .Values.storage.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.storage.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}
+  minReplicas: {{ .Values.storage.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.storage.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.storage.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.storage.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.storage.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.storage.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

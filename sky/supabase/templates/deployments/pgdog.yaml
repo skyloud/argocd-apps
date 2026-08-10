@@ -1,0 +1,203 @@
+{{- /*
+PgDog: SQL-aware pooler/router in front of the CNPG cluster.
+
+  pgdog.toml   : ConfigMap declaring the CNPG primary (and, when
+                 useReadReplicas=true, the replica endpoint too).
+  users.toml   : rendered by an initContainer from the CNPG app + superuser
+                 Secrets (never written to a ConfigMap in plaintext).
+
+Service: ClusterIP `<release>-pgdog`, port 5432 (matches standard Postgres
+port so DB_HOST/DB_PORT overrides on consumers stay drop-in compatible).
+*/}}
+{{- if .Values.pgdog.enabled }}
+{{- $fullname := include "supabase.svcFullname" (dict "root" . "svc" "pgdog") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" (dict "root" . "svc" "pgdog") | nindent 4 }}
+data:
+  pgdog.toml: |
+    [general]
+    host = "0.0.0.0"
+    port = {{ .Values.pgdog.port }}
+    workers = {{ .Values.pgdog.workers }}
+    pooler_mode = "transaction"
+    load_balancing_strategy = "{{ .Values.pgdog.loadBalancingStrategy }}"
+    prepared_statements = "extended"
+    pub_sub_channel_size = {{ .Values.pgdog.pubSubChannelSize }}
+    {{- range $key, $value := .Values.pgdog.extraGeneral }}
+    {{ $key }} = {{ $value | toJson }}
+    {{- end }}
+
+    [[databases]]
+    name = "postgres"
+    host = "{{ include "supabase.cnpgRwService" . }}"
+    port = 5432
+    role = "primary"
+    {{- if and .Values.pgdog.useReadReplicas (gt (int .Values.cnpg.instances) 1) }}
+
+    [[databases]]
+    name = "postgres"
+    host = "{{ include "supabase.cnpgRoService" . }}"
+    port = 5432
+    role = "replica"
+    {{- end }}
+
+  users.toml.template: |
+    # Standard Supabase Postgres roles — created by your migrations'
+    # bootstrap SQL (see README "Bootstrapping Supabase roles").
+    [[users]]
+    name = "authenticator"
+    database = "postgres"
+    password = "__POSTGRES_APP_PASSWORD__"
+    pool_size = {{ .Values.pgdog.pools.authenticator }}
+
+    [[users]]
+    name = "supabase_admin"
+    database = "postgres"
+    password = "__POSTGRES_APP_PASSWORD__"
+    pool_size = {{ .Values.pgdog.pools.supabaseAdmin }}
+
+    [[users]]
+    name = "supabase_auth_admin"
+    database = "postgres"
+    password = "__POSTGRES_APP_PASSWORD__"
+    pool_size = {{ .Values.pgdog.pools.supabaseAuthAdmin }}
+
+    [[users]]
+    name = "supabase_storage_admin"
+    database = "postgres"
+    password = "__POSTGRES_APP_PASSWORD__"
+    pool_size = {{ .Values.pgdog.pools.supabaseStorageAdmin }}
+
+    [[users]]
+    name = "postgres"
+    database = "postgres"
+    password = "__POSTGRES_PASSWORD__"
+    pool_size = {{ .Values.pgdog.pools.postgres }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" (dict "root" . "svc" "pgdog") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "supabase.svcSelectorLabels" (dict "root" . "svc" "pgdog") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: pgdog
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" (dict "root" . "svc" "pgdog") | nindent 4 }}
+spec:
+  {{- if not .Values.pgdog.autoscaling.enabled }}
+  replicas: {{ .Values.pgdog.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" (dict "root" . "svc" "pgdog") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "supabase.svcSelectorLabels" (dict "root" . "svc" "pgdog") | nindent 8 }}
+    spec:
+      {{- with .Values.registryPullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: render-users
+          image: "{{ .Values.pgdog.initImage.repository }}:{{ .Values.pgdog.initImage.tag }}"
+          imagePullPolicy: {{ .Values.pgdog.initImage.pullPolicy }}
+          env:
+            - name: POSTGRES_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (include "supabase.cnpgAppSecretName" .) .Values.pgdog.appDbSecretName | quote }}
+                  key: password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (include "supabase.cnpgSuperuserSecretName" .) .Values.pgdog.superuserSecretName | quote }}
+                  key: password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              cp /config/pgdog.toml /work/pgdog.toml
+              sed \
+                -e "s|__POSTGRES_APP_PASSWORD__|${POSTGRES_APP_PASSWORD}|g" \
+                -e "s|__POSTGRES_PASSWORD__|${POSTGRES_PASSWORD}|g" \
+                /config/users.toml.template > /work/users.toml
+              chmod 600 /work/users.toml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: work
+              mountPath: /work
+      containers:
+        - name: pgdog
+          image: "{{ .Values.pgdog.image.repository }}:{{ .Values.pgdog.image.tag }}"
+          imagePullPolicy: {{ .Values.pgdog.image.pullPolicy }}
+          workingDir: /work
+          command: ["/usr/local/bin/pgdog"]
+          args:
+            - --config
+            - /work/pgdog.toml
+            - --users
+            - /work/users.toml
+          ports:
+            - name: pgdog
+              containerPort: {{ .Values.pgdog.port }}
+              protocol: TCP
+          {{- with .Values.pgdog.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.pgdog.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.pgdog.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: work
+              mountPath: /work
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-config
+        - name: work
+          emptyDir: {}
+      {{- with .Values.pgdog.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pgdog.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pgdog.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

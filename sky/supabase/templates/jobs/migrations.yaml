@@ -1,0 +1,134 @@
+{{- /*
+Generic SQL migrations runner. SQL files come from
+`migrationsCode.image.reference`, mounted read-only via Kubernetes
+ImageVolume (KEP-4639) — requires the `ImageVolume` feature gate on the
+target cluster.
+
+Deliberately NOT a Helm hook: a `pre-install` hook runs before every other
+resource in the SAME release, including the CNPG Cluster this Job depends on
+for its superuser Secret — on a first install that Secret doesn't exist yet,
+so the hook can never succeed (chicken-and-egg). Instead this is a plain Job
+applied alongside everything else; it waits out Postgres's own startup with
+`pg_isready` internally, same as the app-layer Deployments settle in via
+their normal crash-loop-until-ready startup. Job pod templates are
+immutable, so the name includes the release revision to avoid "field is
+immutable" errors on `helm upgrade` when the migrations image changes.
+
+Tracks applied versions in `supabase_migrations.schema_migrations` (same
+convention as the Supabase CLI): files are `<version>_<name>.sql`, applied in
+lexicographic order, each recorded after it succeeds so re-running
+`helm upgrade` is a no-op once a migration has applied.
+
+Connects directly to the CNPG primary as superuser (DDL/role creation can't
+go through PgDog's transaction pooling).
+*/}}
+{{- if .Values.migrations.enabled }}
+{{- $dbSecret := default (include "supabase.cnpgSuperuserSecretName" .) .Values.migrations.dbSecretName }}
+{{- $mountPath := .Values.migrationsCode.mountPath }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "supabase.fullname" . }}-migrations{{- if .Values.migrations.appendReleaseRevisionToJobName }}-r{{ .Release.Revision }}{{- end }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sql-migrations
+spec:
+  ttlSecondsAfterFinished: {{ .Values.migrations.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "supabase.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sql-migrations
+    spec:
+      restartPolicy: Never
+      {{- with .Values.registryPullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.migrations.image.repository }}:{{ .Values.migrations.image.tag }}"
+          imagePullPolicy: {{ .Values.migrations.image.pullPolicy }}
+          env:
+            - name: PGHOST
+              value: {{ include "supabase.cnpgRwService" . | quote }}
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: postgres
+            - name: PGDATABASE
+              value: {{ include "supabase.dbName" . | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbSecret | quote }}
+                  key: password
+            - name: MIGRATIONS_DIR
+              value: {{ $mountPath | quote }}
+            - name: WAIT_MAX_SECONDS
+              value: {{ .Values.migrations.waitForPostgresSeconds | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              echo "== waiting for ${PGHOST}:${PGPORT} (max ${WAIT_MAX_SECONDS}s)"
+              i=0
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; do
+                i=$((i + 2))
+                if [ "$i" -ge "$WAIT_MAX_SECONDS" ]; then
+                  echo "timeout waiting for postgres" >&2
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "== postgres reachable"
+
+              psql_exec() { psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 "$@"; }
+
+              psql_exec -c "CREATE SCHEMA IF NOT EXISTS supabase_migrations;"
+              psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
+
+              find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' | sort | while IFS= read -r f; do
+                base=$(basename "$f" .sql)
+                version=$(printf '%s' "$base" | cut -d'_' -f1)
+                applied=$(psql_exec -tAc "SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${version}'")
+                if [ "$applied" = "1" ]; then
+                  echo "== skip $f (version $version already applied)"
+                  continue
+                fi
+                echo "== applying $f (version $version)"
+                psql_exec -f "$f"
+                psql_exec -c "INSERT INTO supabase_migrations.schema_migrations(version, name) VALUES ('${version}', '$(basename "$f")');"
+                echo "== applied $f"
+              done
+
+              echo "== migrations complete"
+          volumeMounts:
+            - name: migrations-code
+              mountPath: {{ $mountPath }}
+              readOnly: true
+          {{- with .Values.migrations.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: migrations-code
+          image:
+            reference: {{ required "migrationsCode.image.reference is required" .Values.migrationsCode.image.reference | quote }}
+            pullPolicy: {{ .Values.migrationsCode.image.pullPolicy }}
+      {{- with .Values.migrations.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migrations.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migrations.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

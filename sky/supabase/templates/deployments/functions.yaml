@@ -1,0 +1,329 @@
+{{- /*
+Edge Functions (Deno / supabase/edge-runtime). Function code is mounted
+read-only from `functionsCode.image.reference` via Kubernetes ImageVolume —
+no PVC, no custom application image. Expected layout: one directory per
+function under the mount path, each with an `index.ts`.
+
+A small router (`main/index.ts`, rendered inline below) dispatches on the
+first URL path segment to the matching function directory. DB_HOST is the
+CNPG primary directly — Edge Functions can run long-lived invocations that
+shouldn't hold a transaction-pool slot.
+*/}}
+{{- if .Values.functions.enabled -}}
+{{- $svc := dict "root" . "svc" "functions" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- $mountPath := .Values.functionsCode.mountPath -}}
+{{- if .Values.functions.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.functions.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-main
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+data:
+  index.ts: |
+    // Dispatches to <mountPath>/<first-url-segment>/index.ts.
+    const JWT_SECRET = Deno.env.get('JWT_SECRET')
+    const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true'
+    const FUNCTIONS_DIR = '{{ $mountPath }}'
+
+    async function verifyJWT(jwt: string): Promise<boolean> {
+      const { default: jose } = await import('https://deno.land/x/jose@v4.14.4/index.ts' as any)
+      const encoder = new TextEncoder()
+      try {
+        await jose.jwtVerify(jwt, encoder.encode(JWT_SECRET))
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    Deno.serve(async (req: Request) => {
+      if (req.method !== 'OPTIONS' && VERIFY_JWT) {
+        const authHeader = req.headers.get('authorization')
+        const token = authHeader?.split(' ')[1]
+        if (!token || !(await verifyJWT(token))) {
+          return new Response(JSON.stringify({ msg: 'Invalid JWT' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+      }
+
+      const { pathname } = new URL(req.url)
+      const serviceName = pathname.split('/')[1]
+      if (!serviceName) {
+        return new Response(JSON.stringify({ msg: 'missing function name in request path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      const servicePath = `${FUNCTIONS_DIR}/${serviceName}`
+      try {
+        await Deno.stat(`${servicePath}/index.ts`)
+      } catch {
+        return new Response(JSON.stringify({ error: `Function ${serviceName} not found` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      try {
+        const worker = await EdgeRuntime.userWorkers.create({
+          servicePath,
+          memoryLimitMb: 150,
+          workerTimeoutMs: {{ .Values.functions.workerTimeoutMs }},
+          noModuleCache: false,
+          importMapPath: null,
+          envVars: Object.entries(Deno.env.toObject()),
+        })
+        return await worker.fetch(req)
+      } catch (e) {
+        return new Response(JSON.stringify({ msg: String(e) }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    })
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.functions.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.functions.service.type }}
+  ports:
+    - port: {{ .Values.functions.service.port }}
+      targetPort: 9000
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "supabase.svcSelectorLabels" $svc | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  {{- if not .Values.functions.autoscaling.enabled }}
+  replicas: {{ .Values.functions.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.functions.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.functions.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.functions.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ . }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.functions.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: functions
+          args:
+            - start
+            - --main-service
+            - /home/deno/main
+          {{- with .Values.functions.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.functions.image.repository }}:{{ .Values.functions.image.tag }}"
+          imagePullPolicy: {{ .Values.functions.image.pullPolicy }}
+          env:
+            - name: DB_HOST
+              value: {{ include "supabase.cnpgRwService" . | quote }}
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              value: postgres
+            - name: DB_DATABASE
+              value: {{ include "supabase.dbName" . | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.cnpgAppSecretName" . | quote }}
+                  key: password
+            - name: VERIFY_JWT
+              value: {{ .Values.functions.verifyJwt | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            - name: SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: anonKey
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: serviceKey
+            {{- if .Values.kong.enabled }}
+            - name: SUPABASE_URL
+              value: {{ include "supabase.internalKongUrl" . | quote }}
+            {{- end }}
+            - name: SUPABASE_DB_URL
+              value: "postgresql://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_DATABASE)"
+            {{- if .Values.smtp.enabled }}
+            - name: SMTP_HOST
+              value: {{ .Values.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.smtp.port | quote }}
+            {{- with .Values.smtp.from }}
+            - name: SMTP_FROM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.smtp.secretName }}
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.secretName | quote }}
+                  key: username
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.secretName | quote }}
+                  key: password
+            {{- end }}
+            {{- end }}
+            {{- with .Values.functions.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.functions.envFrom .Values.config.secretName }}
+          envFrom:
+            {{- with .Values.functions.envFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.config.secretName }}
+            - secretRef:
+                name: {{ . | quote }}
+                optional: true
+            {{- end }}
+          {{- end }}
+          {{- with .Values.functions.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.functions.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.functions.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- with .Values.functions.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: functions-code
+              mountPath: {{ $mountPath }}
+              readOnly: true
+            # Mounted at a path independent of $mountPath (not nested under it):
+            # the ImageVolume backing $mountPath is read-only content from the
+            # user's functions image, which has no reason to contain a "main"
+            # directory for us to mount into.
+            - name: functions-main
+              mountPath: /home/deno/main/index.ts
+              subPath: index.ts
+              readOnly: true
+      volumes:
+        {{- with .Values.functions.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        - name: functions-code
+          image:
+            reference: {{ required "functionsCode.image.reference is required" .Values.functionsCode.image.reference | quote }}
+            pullPolicy: {{ .Values.functionsCode.image.pullPolicy }}
+        - name: functions-main
+          configMap:
+            name: {{ $fullname }}-main
+      {{- with .Values.functions.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.functions.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.functions.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.functions.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}
+  minReplicas: {{ .Values.functions.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.functions.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.functions.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.functions.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.functions.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.functions.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}
