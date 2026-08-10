@@ -136,6 +136,11 @@ pgdog:
   # to the primary — no replica node declared at all. Requires
   # `cnpg.instances > 1` to have any effect when true.
   useReadReplicas: true
+  # PgDog defaults to `include_primary`, which load-balances reads across
+  # the primary AND replicas — not what "route reads to replicas" implies.
+  # `exclude_primary` reserves the primary for writes only, as intended by
+  # this chart's whole read/write-split design.
+  readWriteSplit: "exclude_primary"
   # 0 = auto (number of available cores).
   workers: 0
   # LISTEN/NOTIFY backlog (used by Storage API).

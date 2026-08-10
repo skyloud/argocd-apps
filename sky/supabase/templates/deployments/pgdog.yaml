@@ -26,6 +26,9 @@ data:
     workers = {{ .Values.pgdog.workers }}
     pooler_mode = "transaction"
     load_balancing_strategy = "{{ .Values.pgdog.loadBalancingStrategy }}"
+    {{- if .Values.pgdog.useReadReplicas }}
+    read_write_split = "{{ .Values.pgdog.readWriteSplit }}"
+    {{- end }}
     prepared_statements = "extended"
     pub_sub_channel_size = {{ .Values.pgdog.pubSubChannelSize }}
     {{- range $key, $value := .Values.pgdog.extraGeneral }}
