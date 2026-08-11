@@ -615,7 +615,8 @@ studio:
   replicaCount: 1
   image:
     repository: supabase/studio
-    tag: "20241028-b0eba90"
+    # renovate: datasource=docker depName=supabase/studio
+    tag: "2026.08.03-sha-022b374"
     pullPolicy: IfNotPresent
     pullSecrets: []
   organizationName: "Default Organization"
