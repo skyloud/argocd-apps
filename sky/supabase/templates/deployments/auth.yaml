@@ -102,13 +102,19 @@ spec:
               value: {{ .Values.auth.disableSignup | quote }}
             - name: GOTRUE_DB_DRIVER
               value: postgres
-            - name: GOTRUE_DB_DATABASE_URL
-              value: "postgres://supabase_auth_admin:$(DB_PASSWORD)@{{ include "supabase.cnpgRwService" . }}:5432/{{ include "supabase.dbName" . }}"
+            # DB_PASSWORD must be defined BEFORE GOTRUE_DB_DATABASE_URL:
+            # Kubernetes only expands a $(VAR) reference in an env var's
+            # value against variables already defined earlier in the same
+            # list. Defined after (as before), GoTrue received the literal
+            # string "$(DB_PASSWORD)" as its password and every connection
+            # failed SASL auth.
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "supabase.cnpgAppSecretName" . | quote }}
                   key: password
+            - name: GOTRUE_DB_DATABASE_URL
+              value: "postgres://supabase_auth_admin:$(DB_PASSWORD)@{{ include "supabase.cnpgRwService" . }}:5432/{{ include "supabase.dbName" . }}"
             - name: GOTRUE_JWT_ADMIN_ROLES
               value: service_role
             - name: GOTRUE_JWT_AUD
