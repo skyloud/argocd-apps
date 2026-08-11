@@ -15,13 +15,14 @@
 -- to avoid grant-by-grant guessing for an internal-only service credential
 -- never exposed to a client - see templates/deployments/realtime.yaml.
 -- ============================================================
-do $$
-begin
-  if not exists (select 1 from pg_roles where rolname = 'supabase_realtime_admin') then
-    create role supabase_realtime_admin with login superuser replication password :'apppass';
-  end if;
-end
-$$;
+-- Plain top-level statement, not a DO $$ block: psql's `:'apppass'`
+-- variable substitution is text-aware and does NOT interpolate inside a
+-- dollar-quoted body (it's treated as an opaque string literal, correctly,
+-- so substitution can't corrupt literal content) - it only works in
+-- ordinary top-level SQL. No existence guard needed either: this file only
+-- ever runs once, tracked by supabase_migrations.schema_migrations like
+-- every other file here.
+create role supabase_realtime_admin with login superuser replication password :'apppass';
 
 create schema if not exists _realtime authorization supabase_admin;
 
