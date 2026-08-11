@@ -182,7 +182,7 @@ spec:
           {{- else }}
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /healthcheck
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
