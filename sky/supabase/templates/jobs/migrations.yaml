@@ -1,8 +1,13 @@
 {{- /*
-Generic SQL migrations runner. SQL files come from
-`migrationsCode.image.reference`, mounted read-only via Kubernetes
-ImageVolume (KEP-4639) — requires the `ImageVolume` feature gate on the
-target cluster.
+Generic SQL migrations runner. Two SQL sources, both optional but at least
+one required (migrations.builtinInit.enabled and/or
+migrationsCode.image.reference):
+  - migrations.builtinInit: chart-owned Supabase role/schema/extension
+    bootstrap (files/supabase-init/), rendered as a ConfigMap - always sorts
+    first (mounted at /00-supabase-init).
+  - migrationsCode.image.reference: your own app-level migrations, mounted
+    read-only via Kubernetes ImageVolume (KEP-4639) — requires the
+    `ImageVolume` feature gate on the target cluster.
 
 Deliberately NOT a Helm hook: a `pre-install` hook runs before every other
 resource in the SAME release, including the CNPG Cluster this Job depends on
@@ -24,7 +29,10 @@ go through PgDog's transaction pooling).
 */}}
 {{- if .Values.migrations.enabled }}
 {{- $dbSecret := default (include "supabase.cnpgSuperuserSecretName" .) .Values.migrations.dbSecretName }}
+{{- $appSecret := default (include "supabase.cnpgAppSecretName" .) .Values.postgres.appSecret.name }}
 {{- $mountPath := .Values.migrationsCode.mountPath }}
+{{- $builtinInit := .Values.migrations.builtinInit.enabled }}
+{{- $hasAppMigrations := ne .Values.migrationsCode.image.reference "" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -65,8 +73,27 @@ spec:
                 secretKeyRef:
                   name: {{ $dbSecret | quote }}
                   key: password
+            {{- if $builtinInit }}
+            # Password every Supabase service already authenticates with
+            # (postgres.appSecret) - used by files/supabase-init/*.sql via
+            # psql's `-v apppass=... ` / `:'apppass'` substitution so it's
+            # never written to a file.
+            - name: PGAPPPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $appSecret | quote }}
+                  key: password
+            {{- end }}
             - name: MIGRATIONS_DIR
               value: {{ $mountPath | quote }}
+            {{- if $builtinInit }}
+            # Leading "00-" guarantees this sorts before $MIGRATIONS_DIR
+            # ("/migrations") in the `find | sort` below - "m" < "s"
+            # alphabetically, which would otherwise run app migrations
+            # before the role/schema bootstrap they depend on.
+            - name: SUPABASE_INIT_DIR
+              value: "/00-supabase-init"
+            {{- end }}
             - name: WAIT_MAX_SECONDS
               value: {{ .Values.migrations.waitForPostgresSeconds | quote }}
           command: ["/bin/sh", "-c"]
@@ -86,12 +113,20 @@ spec:
               done
               echo "== postgres reachable"
 
+              {{- if $builtinInit }}
+              psql_exec() { psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -v apppass="$PGAPPPASSWORD" "$@"; }
+              {{- else }}
               psql_exec() { psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 "$@"; }
+              {{- end }}
 
               psql_exec -c "CREATE SCHEMA IF NOT EXISTS supabase_migrations;"
               psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
 
+              {{- if $builtinInit }}
+              find "$SUPABASE_INIT_DIR" "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' 2>/dev/null | sort | while IFS= read -r f; do
+              {{- else }}
               find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' | sort | while IFS= read -r f; do
+              {{- end }}
                 base=$(basename "$f" .sql)
                 version=$(printf '%s' "$base" | cut -d'_' -f1)
                 applied=$(psql_exec -tAc "SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${version}'")
@@ -107,18 +142,35 @@ spec:
 
               echo "== migrations complete"
           volumeMounts:
+            {{- if $builtinInit }}
+            - name: supabase-init
+              mountPath: /00-supabase-init
+              readOnly: true
+            {{- end }}
+            {{- if $hasAppMigrations }}
             - name: migrations-code
               mountPath: {{ $mountPath }}
               readOnly: true
+            {{- end }}
           {{- with .Values.migrations.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        {{- if $builtinInit }}
+        - name: supabase-init
+          configMap:
+            name: {{ include "supabase.fullname" . }}-supabase-init
+        {{- end }}
+        {{- if $hasAppMigrations }}
         - name: migrations-code
           image:
-            reference: {{ required "migrationsCode.image.reference is required" .Values.migrationsCode.image.reference | quote }}
+            reference: {{ .Values.migrationsCode.image.reference | quote }}
             pullPolicy: {{ .Values.migrationsCode.image.pullPolicy }}
+        {{- end }}
+        {{- if and (not $builtinInit) (not $hasAppMigrations) }}
+        {{- fail "migrations.enabled=true but there is nothing to run: set migrations.builtinInit.enabled=true and/or migrationsCode.image.reference" }}
+        {{- end }}
       {{- with .Values.migrations.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

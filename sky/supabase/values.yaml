@@ -70,10 +70,19 @@ cnpg:
   # downtime. Requires instances > 1 to have any effect.
   primaryUpdateMethod: switchover
   image:
-    repository: ghcr.io/cloudnative-pg/postgresql
+    # supabase/postgres + a 1-line uid fix (26, the Debian/PGDG convention
+    # CNPG's instance manager hardcodes) so it boots under CNPG - see
+    # docker/postgres/Dockerfile. Ships pg_cron/pg_net/supabase_vault/pgmq/
+    # pgjwt/pg_graphql/pgsodium out of the box, which the built-in migration
+    # bootstrap (files/supabase-init/) uses when present. Verified against a
+    # real 2-instance CNPG cluster (initdb + streaming replication) before
+    # publishing. Override with a vanilla ghcr.io/cloudnative-pg/postgresql
+    # image if you don't need those extensions - the bootstrap SQL checks
+    # pg_available_extensions before creating any of them.
+    repository: ghcr.io/skyloud/supabase-postgres
     # CNPG rejects unpinned tags (`latest`) via its admission webhook —
     # always pin a specific version.
-    tag: "16.6-bookworm"
+    tag: "17.6.1.160"
     pullPolicy: IfNotPresent
   imagePullSecrets: []
   enableSuperuserAccess: true
@@ -218,19 +227,21 @@ functionsCode:
 
 migrationsCode:
   image:
-    # Required. e.g. registry.example.com/myorg/supabase-migrations:1.0.0
+    # Required only if you have your OWN app-level migrations to run (on top
+    # of the built-in Supabase bootstrap below). e.g.
+    # registry.example.com/myorg/supabase-migrations:1.0.0
     reference: ""
     pullPolicy: Always
   # Path inside the migrations Job where the image's filesystem lands.
   # Layout expected: flat directory of `<version>_<name>.sql` files, applied
-  # in lexicographic order. Your own Supabase role/schema bootstrap SQL
-  # (roles, schemas, grants, extensions) belongs here as the first file —
-  # see README "Bootstrapping Supabase roles".
+  # in lexicographic order, alongside (after, by filename sort) the built-in
+  # bootstrap files below.
   mountPath: /migrations
 
 # =============================================================================
-# Migrations runner — generic SQL runner, no Supabase-specific bootstrap
-# baked in (see functionsCode/migrationsCode comment above).
+# Migrations runner — generic SQL runner. Built-in Supabase role/schema
+# bootstrap (see migrations.builtinInit below) runs first; your own
+# `migrationsCode` image's app-level migrations run after, in the same Job.
 # -----------------------------------------------------------------------------
 # A plain Job (NOT a Helm hook — see templates/jobs/migrations.yaml for why),
 # applied alongside the rest of the release. Tracks applied versions in
@@ -241,6 +252,17 @@ migrationsCode:
 # =============================================================================
 migrations:
   enabled: true
+  # Bakes the official Supabase role/schema/extension bootstrap (roles,
+  # auth/storage schemas, pg_cron/pg_net/vault/pgmq/pg_graphql if the
+  # Postgres image has them) into a chart-owned ConfigMap, applied first in
+  # the migrations Job - see files/supabase-init/ and README "Bootstrapping
+  # Supabase roles". Every statement that depends on an extension checks
+  # pg_available_extensions first, so this is safe to leave enabled even
+  # against a vanilla ghcr.io/cloudnative-pg/postgresql image (it just skips
+  # what isn't available). Set to false to fully bring your own bootstrap
+  # via migrationsCode instead.
+  builtinInit:
+    enabled: true
   image:
     # Any image with `psql` + a POSIX shell. Debian-based `postgres` images
     # include bash; if you swap to an Alpine-based image, the runner script
