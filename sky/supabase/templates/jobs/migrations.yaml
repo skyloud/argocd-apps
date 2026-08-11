@@ -122,10 +122,18 @@ spec:
               psql_exec -c "CREATE SCHEMA IF NOT EXISTS supabase_migrations;"
               psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
 
+              {{- /*
+              -L: ConfigMap volumes (the builtin bootstrap) mount files as
+              symlinks into a "..data/" directory, not regular files - plain
+              `find -type f` reports the symlink's own type (l) and silently
+              matches nothing. -L makes `-type f` follow the link and check
+              the target instead. Harmless for the ImageVolume-mounted app
+              migrations, which are already regular files either way.
+              */}}
               {{- if $builtinInit }}
-              find "$SUPABASE_INIT_DIR" "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' 2>/dev/null | sort | while IFS= read -r f; do
+              find -L "$SUPABASE_INIT_DIR" "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' 2>/dev/null | sort | while IFS= read -r f; do
               {{- else }}
-              find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' | sort | while IFS= read -r f; do
+              find -L "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' | sort | while IFS= read -r f; do
               {{- end }}
                 base=$(basename "$f" .sql)
                 version=$(printf '%s' "$base" | cut -d'_' -f1)
