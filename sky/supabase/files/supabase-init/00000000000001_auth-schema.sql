@@ -119,3 +119,15 @@ ALTER table "auth".audit_log_entries OWNER TO supabase_auth_admin;
 ALTER table "auth".instances OWNER TO supabase_auth_admin;
 ALTER table "auth".schema_migrations OWNER TO supabase_auth_admin;
 
+-- Not in the upstream file: GoTrue's own bundled migration
+-- (00_init_auth_schema.up.sql) re-creates these same 3 functions on first
+-- boot regardless of the historical schema_migrations rows seeded above
+-- (its internal migration IDs don't match the ones we seed, so it always
+-- attempts them) - CREATE OR REPLACE FUNCTION requires owning the existing
+-- object, and these were just created as postgres (superuser), not
+-- supabase_auth_admin. Without this, auth fails on every boot with
+-- "must be owner of function uid (SQLSTATE 42501)".
+ALTER FUNCTION auth.uid() OWNER TO supabase_auth_admin;
+ALTER FUNCTION auth.role() OWNER TO supabase_auth_admin;
+ALTER FUNCTION auth.email() OWNER TO supabase_auth_admin;
+
