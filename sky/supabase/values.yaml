@@ -304,6 +304,21 @@ migrations:
   # with "field is immutable". Old completed Jobs are garbage-collected via
   # ttlSecondsAfterFinished.
   appendReleaseRevisionToJobName: true
+  # REQUIRED when this chart is deployed by ArgoCD (or anything else that
+  # renders with `helm template`): .Release.Revision is always 1 there, so
+  # `appendReleaseRevisionToJobName` produces the same Job name forever, the
+  # completed Job is never replaced, and new migrations silently never run.
+  # `true` annotates the Job as an ArgoCD `Sync` hook with
+  # hook-delete-policy=BeforeHookCreation, so ArgoCD deletes and recreates it
+  # on every sync. Safe to re-run: applied versions are skipped.
+  # Do NOT combine with a real `helm install/upgrade` that already manages
+  # Helm hooks itself.
+  argocdHook: false
+  # Sync wave for the hook above. Negative values run it before the app-layer
+  # Deployments in the same sync; the Job waits for Postgres internally either
+  # way, so this only affects how long PostgREST/Studio serve a pre-migration
+  # schema on a first install.
+  argocdSyncWave: "0"
   ttlSecondsAfterFinished: 86400
   # Keep retrying: on first install the pod may sit in
   # CreateContainerConfigError for a bit until the CNPG Cluster (applied in

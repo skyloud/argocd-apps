@@ -19,13 +19,14 @@ their normal crash-loop-until-ready startup. Job pod templates are
 immutable, so the name includes the release revision to avoid "field is
 immutable" errors on `helm upgrade` when the migrations image changes.
 
-Tracks applied versions in `supabase_migrations.schema_migrations` (same
-convention as the Supabase CLI): files are `<version>_<name>.sql`, applied in
-lexicographic order, each recorded after it succeeds so re-running
-`helm upgrade` is a no-op once a migration has applied.
-
-Connects directly to the CNPG primary as superuser (DDL/role creation can't
-go through PgDog's transaction pooling).
+Job pod templates are immutable, so the Job needs a fresh name whenever its
+SQL changes. Under `helm upgrade` that's what appendReleaseRevisionToJobName
+does. Under ArgoCD it CANNOT work: ArgoCD renders with `helm template`, where
+.Release.Revision is always 1, so the name never changes, the completed Job
+is never replaced, and new migrations silently never apply. Set
+`migrations.argocdHook=true` there instead - ArgoCD then deletes and recreates
+the Job on every sync. Re-running is safe and cheap: both ledgers are
+consulted per file, so already-applied migrations are skipped.
 */}}
 {{- if .Values.migrations.enabled }}
 {{- $dbSecret := default (include "supabase.cnpgSuperuserSecretName" .) .Values.migrations.dbSecretName }}
@@ -33,6 +34,21 @@ go through PgDog's transaction pooling).
 {{- $mountPath := .Values.migrationsCode.mountPath }}
 {{- $builtinInit := .Values.migrations.builtinInit.enabled }}
 {{- $hasAppMigrations := ne .Values.migrationsCode.image.reference "" }}
+{{- $argocdHook := .Values.migrations.argocdHook }}
+{{- $vault := .Values.migrations.vaultBootstrap }}
+{{- /*
+Exact version strings of the builtin bootstrap files, read from the files
+themselves rather than pattern-matched, so the one-time backfill below can
+never misclassify an app migration that happens to look like a builtin one.
+*/}}
+{{- $builtinVersions := list }}
+{{- range $path, $_ := .Files.Glob "files/supabase-init/*.sql" }}
+{{- $builtinVersions = append $builtinVersions (printf "'%s'" (splitList "_" (base $path) | first)) }}
+{{- end }}
+{{- $builtinVersionList := join ", " $builtinVersions }}
+{{- if and (not $builtinInit) (not $hasAppMigrations) }}
+{{- fail "migrations.enabled=true but there is nothing to run: set migrations.builtinInit.enabled=true and/or migrationsCode.image.reference" }}
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -41,6 +57,12 @@ metadata:
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
     app.kubernetes.io/component: sql-migrations
+  {{- if $argocdHook }}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: {{ .Values.migrations.argocdSyncWave | quote }}
+  {{- end }}
 spec:
   ttlSecondsAfterFinished: {{ .Values.migrations.ttlSecondsAfterFinished }}
   backoffLimit: {{ .Values.migrations.backoffLimit }}
