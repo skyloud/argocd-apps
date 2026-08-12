@@ -10,7 +10,7 @@ description: >-
   mounted read-only via Kubernetes ImageVolume (KEP-4639) — no PVC, no
   custom application image required.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "1.0.0"
 home: https://supabase.com
 sources:

@@ -86,13 +86,32 @@ spec:
           name: {{ required "postgres.appSecret.name or cnpg.bootstrap.initdb.secret.name is required when cnpg.managedRoles.enabled=true" $appSecret | quote }}
   {{- end }}
 
-  {{- with .Values.cnpg.postgresql }}
+  {{- /*
+  pgaudit (cnpg.pgaudit.enabled) contributes ONLY parameters here, and
+  deliberately does not touch shared_preload_libraries: CNPG treats the mere
+  presence of `pgaudit.*` parameters as the switch, and adds/removes the
+  library itself (it also runs CREATE/DROP EXTENSION pgaudit across every
+  database in the cluster). Listing the library here as well would duplicate
+  an entry the operator already owns, and fight it on disable. See CNPG's
+  "PGAudit Logs" documentation section.
+
+  Explicit `parameters` entries win over the pgaudit defaults: `merge` keeps
+  keys already present in the destination, and deepCopy stops it mutating
+  .Values for later templates.
+  */}}
+  {{- $pg := .Values.cnpg.postgresql | default dict -}}
+  {{- $spl := $pg.sharedPreloadLibraries | default list -}}
+  {{- $params := $pg.parameters | default dict -}}
+  {{- if .Values.cnpg.pgaudit.enabled -}}
+  {{- $params = merge (deepCopy $params) (.Values.cnpg.pgaudit.parameters | default dict) -}}
+  {{- end -}}
+  {{- if or $spl $params }}
   postgresql:
-    {{- with .sharedPreloadLibraries }}
+    {{- with $spl }}
     shared_preload_libraries:
       {{- toYaml . | nindent 6 }}
     {{- end }}
-    {{- with .parameters }}
+    {{- with $params }}
     parameters:
       {{- range $k, $v := . }}
       {{ $k }}: {{ $v | quote }}

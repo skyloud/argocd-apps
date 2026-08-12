@@ -143,6 +143,66 @@ cnpg:
       wal_level: logical
       max_wal_senders: "10"
       max_replication_slots: "10"
+  # ---------------------------------------------------------------------------
+  # pgaudit — session (and optionally object) audit logging.
+  # ---------------------------------------------------------------------------
+  # OFF by default, deliberately: with `pgaudit.log = all, -misc` every
+  # statement PostgREST runs is written to the instance's log, which on a
+  # read-heavy API is considerably more log volume than every application
+  # container combined. Turn it on knowing where the records go and what that
+  # storage costs.
+  #
+  # Everything below is handled natively by the CNPG operator, which treats the
+  # mere PRESENCE of `pgaudit.*` parameters as the switch (see its "PGAudit
+  # Logs" doc section). Setting `enabled: true` here is enough — the operator
+  # then:
+  #   - adds `pgaudit` to shared_preload_libraries (and removes it again when
+  #     the parameters go away), which is why this chart does not list it in
+  #     cnpg.postgresql.sharedPreloadLibraries and you should not either;
+  #   - runs CREATE EXTENSION pgaudit in every database in the cluster that
+  #     accepts connections (and DROP EXTENSION on disable), so nothing is
+  #     needed in files/supabase-init/ for this.
+  # Preloading a library changes shared_preload_libraries, which requires a
+  # Postgres restart — CNPG performs it as a rolling restart
+  # (primaryUpdateMethod above), so expect one brief primary switchover when
+  # you flip this.
+  #
+  # Records are written to the instance's stderr; CNPG parses the pgaudit CSV
+  # and re-emits it on the pod's stdout as JSON with `.logger` = "pgaudit",
+  # `.msg` = "record", and the audit fields under `.record.audit`
+  # (audit_type/class/command/statement/parameter/...) alongside the usual
+  # user_name/database_name/session_id. Anything already collecting container
+  # logs (this chart's Vector DaemonSet, a cluster-wide Fluent Bit / CloudWatch
+  # agent, ...) therefore picks them up with no further wiring, and
+  # `.logger == "pgaudit"` is the field to filter on downstream. Never set
+  # `pgaudit.log_directory`: it diverts records to files inside the pod, where
+  # nothing collects them and they die with the pod.
+  pgaudit:
+    enabled: false
+    # Merged into cnpg.postgresql.parameters above; a key set in both places
+    # takes its value from `parameters` (the explicit escape hatch wins).
+    parameters:
+      # Classes to record. `all, -misc` = every class (READ, WRITE, FUNCTION,
+      # ROLE, DDL, MISC_SET) except MISC (DISCARD/FETCH/CHECKPOINT/VACUUM).
+      # READ is by far the most expensive one here — dropping to
+      # "write, ddl, role" keeps the compliance-relevant trail (who changed
+      # what, who was granted what) at a small fraction of the volume.
+      pgaudit.log: "all, -misc"
+      # Skip statements that only touch pg_catalog. PostgREST re-introspects
+      # the schema on every schema-cache reload and Studio/postgres-meta query
+      # the catalog constantly, so with this `on` catalog reads dominate the
+      # audit trail while saying nothing about access to application data.
+      pgaudit.log_catalog: "off"
+      # One record per relation touched rather than one per statement (a join
+      # across 3 tables produces 3 records), which is what makes "who read
+      # this table" answerable by filtering rather than by parsing SQL text.
+      pgaudit.log_relation: "on"
+      # OFF deliberately: `on` writes bind-parameter VALUES into the audit
+      # trail. That is often precisely what an audit wants, but it also means
+      # every argument a client passes to an RPC lands in whatever store these
+      # logs are archived to. Turn it on only if that store is treated as
+      # holding sensitive data.
+      pgaudit.log_parameter: "off"
   storage:
     size: 50Gi
     storageClass: ""

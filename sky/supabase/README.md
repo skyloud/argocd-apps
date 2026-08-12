@@ -251,6 +251,59 @@ to the primary:
 | Edge Functions | direct to primary | May hold long-lived transactions |
 | Migrations | direct to primary (superuser) | DDL / role creation |
 
+## Audit logging (pgaudit)
+
+Off by default. `cnpg.pgaudit.enabled: true` is the whole switch:
+
+```yaml
+cnpg:
+  pgaudit:
+    enabled: true
+    parameters:
+      pgaudit.log: "all, -misc"     # or "write, ddl, role" for far less volume
+      pgaudit.log_catalog: "off"
+      pgaudit.log_relation: "on"
+      pgaudit.log_parameter: "off"  # `on` puts client-supplied VALUES in the logs
+```
+
+That renders the `pgaudit.*` GUCs into the `Cluster`'s `postgresql.parameters`
+and nothing else, because CNPG treats their presence as the switch and owns the
+rest natively: it adds/removes `pgaudit` in `shared_preload_libraries`, and runs
+`CREATE EXTENSION` / `DROP EXTENSION pgaudit` in every database in the cluster.
+So **don't** add `pgaudit` to `cnpg.postgresql.sharedPreloadLibraries` (you'd
+duplicate an entry the operator manages) and nothing is needed in
+`files/supabase-init/`. Flipping it changes `shared_preload_libraries`, which
+needs a Postgres restart — CNPG does that as a rolling restart, i.e. one brief
+switchover.
+
+Records land on the postgres pod's **stdout**, as CNPG's usual JSON envelope
+with `.logger` = `"pgaudit"`, `.msg` = `"record"`, and the pgaudit CSV parsed
+into `.record.audit` (`audit_type`, `class`, `command`, `statement`,
+`parameter`, …) next to `.record.user_name` / `.record.database_name` /
+`.record.session_id`. Two consequences worth knowing:
+
+- Any container-log collector already running picks them up with no extra
+  wiring — this chart's Vector DaemonSet, or a cluster-wide Fluent Bit /
+  CloudWatch agent. `.logger == "pgaudit"` is the field to filter on to
+  separate the audit trail from ordinary Postgres logs.
+- Never set `pgaudit.log_directory`. It diverts records to files inside the
+  pod, where no collector sees them and they're lost with the pod.
+
+Two things to decide before enabling, rather than after:
+
+- **Volume.** `all, -misc` includes `READ`, so every `SELECT` PostgREST issues
+  is audited — on a read-heavy API that is more log volume than every other
+  container in the release combined, and it is billed by whatever ingests it.
+  `pgaudit.log_catalog: "off"` (default here) is what keeps PostgREST's
+  schema-cache reloads and Studio/postgres-meta's constant catalog queries out
+  of the trail. If you only need the compliance-relevant "who changed what,
+  who was granted what", `pgaudit.log: "write, ddl, role"` costs a fraction.
+- **`pgaudit.log_parameter`.** Left `off` here deliberately, unlike CNPG's own
+  doc example. `on` writes bind-parameter values into the trail, so every
+  argument a client passes to an RPC ends up wherever those logs are archived.
+  Often exactly what an audit wants — but only turn it on if that destination
+  is treated as holding sensitive data.
+
 ## Known limitations
 
 - **Storage local-disk backend** (`storage.s3.enabled: false`, the default)
