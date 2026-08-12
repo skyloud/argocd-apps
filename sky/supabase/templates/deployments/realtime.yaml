@@ -74,7 +74,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: realtime
+        - name: {{ include "supabase.realtime.name" . }}
           {{- with .Values.realtime.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

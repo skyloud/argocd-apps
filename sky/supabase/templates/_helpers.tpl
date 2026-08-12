@@ -111,6 +111,47 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-%s" .root.Release.Name .svc | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{/* ==========================================================================
+     Per-service container names - single source of truth for each
+     templates/deployments/<svc>.yaml container `name:` field AND Vector's
+     log router (templates/deployments/vector.yaml, matches `.appname`
+     against these) - ported from the official supabase-community/
+     supabase-kubernetes chart's per-service `.name` helpers (each service's
+     own templates/<svc>/_helpers.tpl there), which its own deployment
+     templates and vector config both reference for exactly this reason.
+     `<svc>.nameOverride` follows this chart's existing top-level
+     nameOverride convention (see supabase.name/supabase.fullname above).
+     No `supabase.db.name` override - CNPG's operator hardcodes its
+     container name to "postgres" regardless of what this chart does.
+     ========================================================================= */}}
+{{- define "supabase.kong.name" -}}
+{{- default (print .Chart.Name "-kong") .Values.kong.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{- define "supabase.auth.name" -}}
+{{- default (print .Chart.Name "-auth") .Values.auth.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{- define "supabase.rest.name" -}}
+{{- default (print .Chart.Name "-rest") .Values.rest.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{- define "supabase.realtime.name" -}}
+{{- default (print .Chart.Name "-realtime") .Values.realtime.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{- define "supabase.storage.name" -}}
+{{- default (print .Chart.Name "-storage") .Values.storage.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{- define "supabase.functions.name" -}}
+{{- default (print .Chart.Name "-functions") .Values.functions.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{- define "supabase.db.name" -}}
+postgres
+{{- end -}}
+
 {{- define "supabase.svcSelectorLabels" -}}
 app.kubernetes.io/name: {{ .svc }}
 app.kubernetes.io/instance: {{ .root.Release.Name }}

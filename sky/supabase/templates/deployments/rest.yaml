@@ -73,7 +73,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: rest
+        - name: {{ include "supabase.rest.name" . }}
           {{- with .Values.rest.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

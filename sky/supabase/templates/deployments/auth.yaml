@@ -74,7 +74,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: auth
+        - name: {{ include "supabase.auth.name" . }}
           {{- with .Values.auth.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

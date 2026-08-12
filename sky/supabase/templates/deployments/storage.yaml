@@ -97,7 +97,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: storage
+        - name: {{ include "supabase.storage.name" . }}
           {{- with .Values.storage.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}

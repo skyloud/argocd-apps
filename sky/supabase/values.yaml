@@ -333,6 +333,9 @@ config:
 # =============================================================================
 kong:
   enabled: true
+  # Container name override (default "<chart-name>-kong") - also what
+  # Vector's log router matches against, see templates/deployments/vector.yaml.
+  nameOverride: ""
   replicaCount: 1
   # Publicly reachable URL of the Kong gateway (e.g. https://api.example.com).
   # Consumed by Auth (API_EXTERNAL_URL) and Studio (SUPABASE_PUBLIC_URL) as the
@@ -383,6 +386,9 @@ kong:
 # =============================================================================
 auth:
   enabled: true
+  # Container name override (default "<chart-name>-auth") - also what
+  # Vector's log router matches against, see templates/deployments/vector.yaml.
+  nameOverride: ""
   replicaCount: 1
   image:
     repository: supabase/gotrue
@@ -428,6 +434,9 @@ auth:
 # =============================================================================
 rest:
   enabled: true
+  # Container name override (default "<chart-name>-rest") - also what
+  # Vector's log router matches against, see templates/deployments/vector.yaml.
+  nameOverride: ""
   replicaCount: 1
   image:
     repository: postgrest/postgrest
@@ -471,6 +480,9 @@ rest:
 # =============================================================================
 realtime:
   enabled: true
+  # Container name override (default "<chart-name>-realtime") - also what
+  # Vector's log router matches against, see templates/deployments/vector.yaml.
+  nameOverride: ""
   replicaCount: 1
   image:
     repository: supabase/realtime
@@ -520,6 +532,9 @@ realtime:
 # =============================================================================
 storage:
   enabled: true
+  # Container name override (default "<chart-name>-storage") - also what
+  # Vector's log router matches against, see templates/deployments/vector.yaml.
+  nameOverride: ""
   replicaCount: 1
   image:
     repository: supabase/storage-api
@@ -697,6 +712,9 @@ imgproxy:
 # =============================================================================
 functions:
   enabled: true
+  # Container name override (default "<chart-name>-functions") - also what
+  # Vector's log router matches against, see templates/deployments/vector.yaml.
+  nameOverride: ""
   replicaCount: 1
   image:
     repository: supabase/edge-runtime

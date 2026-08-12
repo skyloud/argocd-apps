@@ -158,7 +158,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: functions
+        - name: {{ include "supabase.functions.name" . }}
           args:
             - start
             - --main-service
