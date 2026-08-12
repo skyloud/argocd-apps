@@ -131,6 +131,29 @@ spec:
             {{- end }}
             - name: WAIT_MAX_SECONDS
               value: {{ .Values.migrations.waitForPostgresSeconds | quote }}
+            {{- if and $vault.enabled $vault.supabaseKeys }}
+            - name: VAULT_SUPABASE_URL
+              value: {{ .Values.kong.publicUrl | default (include "supabase.internalKongUrl" .) | quote }}
+            - name: VAULT_SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: anonKey
+            - name: VAULT_SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: serviceKey
+            {{- end }}
+            {{- if $vault.enabled }}
+            {{- range $i, $e := $vault.extra }}
+            - name: VAULT_EXTRA_{{ $i }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "migrations.vaultBootstrap.extra[].secretName is required" $e.secretName | quote }}
+                  key: {{ required "migrations.vaultBootstrap.extra[].key is required" $e.key | quote }}
+            {{- end }}
+            {{- end }}
           command: ["/bin/sh", "-c"]
           args:
             - |

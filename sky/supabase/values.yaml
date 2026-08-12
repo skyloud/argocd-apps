@@ -322,6 +322,33 @@ migrations:
   # way, so this only affects how long PostgREST/Studio serve a pre-migration
   # schema on a first install.
   argocdSyncWave: "0"
+  # -----------------------------------------------------------------------
+  # Supabase Vault bootstrap — off by default.
+  #
+  # Enable this if your SQL calls Edge Functions from the database (a trigger
+  # or a pg_cron job doing `net.http_post(...)`), which is the standard
+  # Supabase Cloud pattern. Those statements read their target URL and API
+  # key out of `vault.decrypted_secrets` by name, and Cloud has them
+  # populated out-of-band — via the dashboard or the Management API — so they
+  # are NOT in your migrations and a self-hosted database starts without
+  # them. Every such trigger then fails at runtime.
+  #
+  # Runs after migrations (supabase_vault is created by them) and rewrites
+  # the secrets on every run, so rotating the JWT Secret or changing
+  # kong.publicUrl propagates into the database.
+  vaultBootstrap:
+    enabled: false
+    # Upsert SUPABASE_URL (kong.publicUrl, or the in-cluster Kong URL when
+    # unset), SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY from this
+    # release's own JWT Secret.
+    supabaseKeys: true
+    # Additional vault secrets, each sourced from an existing K8s Secret key.
+    # Use this for project-specific names your SQL expects, e.g. a worker
+    # token a cron job authenticates with:
+    #   - name: email_queue_service_role_key
+    #     secretName: supabase-jwt
+    #     key: serviceKey
+    extra: []
   ttlSecondsAfterFinished: 86400
   # Keep retrying: on first install the pod may sit in
   # CreateContainerConfigError for a bit until the CNPG Cluster (applied in
