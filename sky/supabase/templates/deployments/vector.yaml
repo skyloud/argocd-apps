@@ -127,8 +127,8 @@ data:
         source: |
           .event_message = .message
           parsed = parse_regex(.message, r'\[(?P<level>\w+)\]') ?? {}
-          level = get(parsed, ["level"])
-          if level != null {
+          level, err = get(parsed, ["level"])
+          if err == null && level != null {
             .metadata.level = level
           } else {
             .metadata.level = "info"
@@ -163,7 +163,7 @@ data:
           }
           if exists(.record.message) {
             .event_message = to_string(.record.message) ?? .message
-            .metadata.severity = downcase(to_string(.record.error_severity) ?? "log") ?? "log"
+            .metadata.severity = downcase(to_string(.record.error_severity) ?? "log")
           } else {
             .event_message = .message
           }
