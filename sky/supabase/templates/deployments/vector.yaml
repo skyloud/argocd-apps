@@ -1,0 +1,385 @@
+{{- /*
+Vector — tails every other service's container logs (source `kubernetes_logs`)
+and ships them to Analytics (Logflare), split by container name into the
+exact Logflare source names Studio's Logs Explorer queries (hardcoded there -
+see https://github.com/supabase/supabase/blob/master/docker/volumes/logs/vector.yml,
+the upstream reference this pipeline is ported from). Per-service parsing
+below is matched against real log output of each image pinned in this chart's
+values.yaml, not guessed - GoTrue/storage-api log flat JSON (logrus/pino),
+CNPG's instance manager wraps every Postgres line as JSON with the real
+message under `.record.message`, Kong/PostgREST/Realtime log plain text.
+
+Runs as a DaemonSet: `kubernetes_logs` reads /var/log/pods on the node the
+pod is scheduled to, so a Deployment would only ever see one node's logs.
+`vector.tolerations` must cover every node pool you want logs from.
+*/}}
+{{- if .Values.vector.enabled -}}
+{{- if not .Values.analytics.enabled }}
+{{- fail "vector.enabled=true requires analytics.enabled=true (Vector's sinks point at the in-cluster Analytics/Logflare service)." }}
+{{- end }}
+{{- $svc := dict "root" . "svc" "vector" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- $tokensSecret := include "supabase.analyticsTokensName" . -}}
+{{- $analyticsUrl := include "supabase.internalAnalyticsUrl" . -}}
+{{- if .Values.vector.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.vector.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-read
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-read
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "supabase.svcServiceAccountName" $svc }}
+    namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+data:
+  vector.yaml: |
+    data_dir: /vector-data-dir
+
+    api:
+      enabled: true
+      address: 0.0.0.0:8686
+
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+        # Postgres normally lives in this same namespace, but can be split
+        # out via postgres.namespace (see supabase.postgresNamespaceIsSeparate)
+        # - include both or the "postgres" container's logs (source db_logs
+        # below) never show up at all.
+        extra_namespace_label_selector: "kubernetes.io/metadata.name in ({{ .Release.Namespace }}{{ if include "supabase.postgresNamespaceIsSeparate" . }},{{ include "supabase.postgresNamespace" . }}{{ end }})"
+
+    transforms:
+      route_by_service:
+        type: route
+        inputs: [kubernetes_logs]
+        route:
+          kong: '.kubernetes.container_name == "kong"'
+          auth: '.kubernetes.container_name == "auth"'
+          rest: '.kubernetes.container_name == "rest"'
+          realtime: '.kubernetes.container_name == "realtime"'
+          storage: '.kubernetes.container_name == "storage"'
+          functions: '.kubernetes.container_name == "functions"'
+          db: '.kubernetes.container_name == "postgres"'
+
+      # Kong: nginx combined-log-format access lines on stdout.
+      kong_logs:
+        type: remap
+        inputs: ["route_by_service.kong"]
+        source: |
+          .event_message = .message
+          parsed = parse_regex(.message, r'^(?P<client_ip>\S+) \S+ \S+ \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<path>[^ "]+)[^"]*" (?P<status>\d+) (?P<bytes>\d+)') ?? {}
+          .metadata = parsed
+
+      # GoTrue: one flat JSON object per line (logrus) - {"level","msg","time",...}.
+      auth_logs:
+        type: remap
+        inputs: ["route_by_service.auth"]
+        source: |
+          parsed, err = parse_json(string!(.message))
+          if err == null {
+            . = merge(., object!(parsed))
+          }
+          .event_message = to_string(.msg) ?? .message
+
+      # PostgREST: plain "<timestamp>: <message>" text, nothing structured to parse.
+      rest_logs:
+        type: remap
+        inputs: ["route_by_service.rest"]
+        source: |
+          .event_message = .message
+
+      realtime_logs:
+        type: remap
+        inputs: ["route_by_service.realtime"]
+        source: |
+          .event_message = .message
+          parsed = parse_regex(.message, r'\[(?P<level>\w+)\]') ?? {}
+          level = get(parsed, ["level"])
+          if level != null {
+            .metadata.level = level
+          } else {
+            .metadata.level = "info"
+          }
+
+      # storage-api: one flat JSON object per line (pino) - {"level","msg","time",...}.
+      storage_logs:
+        type: remap
+        inputs: ["route_by_service.storage"]
+        source: |
+          parsed, err = parse_json(string!(.message))
+          if err == null {
+            . = merge(., object!(parsed))
+          }
+          .event_message = to_string(.msg) ?? .message
+
+      functions_logs:
+        type: remap
+        inputs: ["route_by_service.functions"]
+        source: |
+          .event_message = .message
+
+      # CNPG's instance manager wraps every Postgres log line as JSON, the
+      # real message lives at .record.message / .record.error_severity.
+      db_logs:
+        type: remap
+        inputs: ["route_by_service.db"]
+        source: |
+          parsed, err = parse_json(string!(.message))
+          if err == null {
+            . = merge(., object!(parsed))
+          }
+          if exists(.record.message) {
+            .event_message = to_string(.record.message) ?? .message
+            .metadata.severity = downcase(to_string(.record.error_severity) ?? "log") ?? "log"
+          } else {
+            .event_message = .message
+          }
+
+    sinks:
+      logflare_kong:
+        type: http
+        inputs: [kong_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=cloudflare.logs.prod"
+      logflare_auth:
+        type: http
+        inputs: [auth_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=gotrue.logs.prod"
+      logflare_rest:
+        type: http
+        inputs: [rest_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=postgREST.logs.prod"
+      logflare_realtime:
+        type: http
+        inputs: [realtime_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=realtime.logs.prod"
+      logflare_storage:
+        type: http
+        inputs: [storage_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=storage.logs.prod.2"
+      logflare_functions:
+        type: http
+        inputs: [functions_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=deno-relay-logs"
+      logflare_db:
+        type: http
+        inputs: [db_logs]
+        encoding:
+          codec: json
+        method: post
+        request:
+          retry_max_duration_secs: 30
+          retry_initial_backoff_secs: 1
+          headers:
+            x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+        uri: "{{ $analyticsUrl }}/api/logs?source_name=postgres.logs"
+      prometheus:
+        type: prometheus_exporter
+        inputs: [kubernetes_logs]
+        address: 0.0.0.0:9598
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.vector.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.vector.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.vector.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: vector
+          {{- with .Values.vector.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.vector.image.repository }}:{{ .Values.vector.image.tag }}"
+          imagePullPolicy: {{ .Values.vector.image.pullPolicy }}
+          args:
+            - --config
+            - /etc/vector/vector.yaml
+          env:
+            - name: VECTOR_SELF_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $tokensSecret | quote }}
+                  key: publicAccessToken
+            {{- with .Values.vector.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.vector.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 9598
+              protocol: TCP
+            - name: api
+              containerPort: 8686
+              protocol: TCP
+          {{- with .Values.vector.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.vector.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+              readOnly: true
+            - name: data
+              mountPath: /vector-data-dir
+            - name: var-log
+              mountPath: /var/log/
+              readOnly: true
+            - name: var-lib
+              mountPath: /var/lib/
+              readOnly: true
+            {{- with .Values.vector.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.vector.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-config
+        - name: data
+          hostPath:
+            path: /var/lib/vector
+            type: DirectoryOrCreate
+        - name: var-log
+          hostPath:
+            path: /var/log/
+        - name: var-lib
+          hostPath:
+            path: /var/lib/
+        {{- with .Values.vector.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.vector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

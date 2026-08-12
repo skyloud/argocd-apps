@@ -735,3 +735,78 @@ functions:
     maxReplicas: 8
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+
+# =============================================================================
+# Analytics (Logflare) — self-hosted single-tenant log backend consumed by
+# Studio's Logs Explorer (the API Gateway / Postgres / PostgREST / Auth /
+# Storage / Realtime / Functions log pages). Disabled by default: every other
+# service works fine without it, just with those log pages empty. Also
+# requires `vector.enabled: true` below to actually ship any logs in - this
+# service alone has nothing to read from.
+# =============================================================================
+analytics:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: supabase/logflare
+    # renovate: datasource=docker depName=supabase/logflare
+    tag: "1.43.1"
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+  extraEnv: []
+  envFrom: []
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  livenessProbe: {}
+  readinessProbe: {}
+  volumeMounts: []
+  volumes: []
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+  service:
+    type: ClusterIP
+    port: 4000
+    annotations: {}
+
+# =============================================================================
+# Vector — tails every other service's container logs and ships them into
+# Analytics (above), tagged under the exact Logflare source names Studio's
+# Logs Explorer queries (fixed upstream — see
+# https://github.com/supabase/supabase/blob/master/docker/volumes/logs/vector.yml).
+# Runs as a DaemonSet: its `kubernetes_logs` source reads /var/log/pods on
+# whatever node the pod lands on, so a regular Deployment would only ever see
+# one node's worth of logs. Set `vector.tolerations` to cover every node
+# pool you want logs from - untainted nodes need none.
+# =============================================================================
+vector:
+  enabled: false
+  image:
+    repository: timberio/vector
+    # renovate: datasource=docker depName=timberio/vector
+    tag: "0.53.0-alpine"
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+  extraEnv: []
+  envFrom: []
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  livenessProbe: {}
+  readinessProbe: {}
+  volumeMounts: []
+  volumes: []
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""

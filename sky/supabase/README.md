@@ -21,8 +21,12 @@ Edge Functions code and SQL migrations as OCI images.
 | imgproxy | `darthsim/imgproxy` | On-the-fly image transforms |
 | Edge Functions (`functions`) | `supabase/edge-runtime` | Deno function runtime |
 | Migrations | `postgres` (any image with `psql`) | Generic SQL migration runner |
+| Analytics | `supabase/logflare` | Log backend for Studio's Logs Explorer |
+| Vector | `timberio/vector` | Ships every other service's logs into Analytics |
 
-Everything is toggleable via `<service>.enabled`.
+Everything is toggleable via `<service>.enabled`. Analytics/Vector are off by
+default (`analytics.enabled` / `vector.enabled`) — every other service works
+fine without them, just with Studio's Logs Explorer pages empty.
 
 ## Prerequisites
 
@@ -162,6 +166,13 @@ to the primary:
   functions, not required for functions to actually run.
 - Image tags in `values.yaml` are illustrative placeholders — pin them to
   tested releases (Renovate or similar) before running this in production.
+- **Vector's Logflare source names are fixed** (`postgres.logs`,
+  `postgREST.logs.prod`, `cloudflare.logs.prod`, etc.) — they're hardcoded in
+  Studio's Logs Explorer, not this chart's convention. Don't rename them in
+  `templates/deployments/vector.yaml` or Studio's log pages go back to empty.
+- Vector is a DaemonSet — set `vector.tolerations` to cover every node pool
+  you want logs from, or it simply won't schedule (and won't collect logs)
+  there.
 
 ## Verifying locally
 

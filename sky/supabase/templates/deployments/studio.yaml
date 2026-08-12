@@ -98,6 +98,17 @@ spec:
               value: {{ .Values.studio.projectName | quote }}
             - name: NEXT_ANALYTICS_BACKEND_PROVIDER
               value: postgres
+            {{- if .Values.analytics.enabled }}
+            - name: NEXT_PUBLIC_ENABLE_LOGS
+              value: "true"
+            - name: LOGFLARE_URL
+              value: {{ include "supabase.internalAnalyticsUrl" . | quote }}
+            - name: LOGFLARE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.analyticsTokensName" . | quote }}
+                  key: privateAccessToken
+            {{- end }}
             {{- if .Values.studio.functionsCodeVolume.enabled }}
             - name: EDGE_FUNCTIONS_MANAGEMENT_FOLDER
               value: {{ .Values.functionsCode.mountPath | quote }}
