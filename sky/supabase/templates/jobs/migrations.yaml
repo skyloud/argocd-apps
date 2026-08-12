@@ -3,7 +3,7 @@ Generic SQL migrations runner. Two SQL sources, both optional but at least
 one required (migrations.builtinInit.enabled and/or
 migrationsCode.image.reference):
   - migrations.builtinInit: chart-owned Supabase role/schema/extension
-    bootstrap (files/supabase-init/), rendered as a ConfigMap - always sorts
+    bootstrap (files/supabase-init/), rendered as a ConfigMap - always runs
     first (mounted at /00-supabase-init).
   - migrationsCode.image.reference: your own app-level migrations, mounted
     read-only via Kubernetes ImageVolume (KEP-4639) — requires the
@@ -27,10 +27,7 @@ resource in the SAME release, including the CNPG Cluster this Job depends on
 for its superuser Secret — on a first install that Secret doesn't exist yet,
 so the hook can never succeed (chicken-and-egg). Instead this is a plain Job
 applied alongside everything else; it waits out Postgres's own startup with
-`pg_isready` internally, same as the app-layer Deployments settle in via
-their normal crash-loop-until-ready startup. Job pod templates are
-immutable, so the name includes the release revision to avoid "field is
-immutable" errors on `helm upgrade` when the migrations image changes.
+`pg_isready` internally.
 
 Job pod templates are immutable, so the Job needs a fresh name whenever its
 SQL changes. Under `helm upgrade` that's what appendReleaseRevisionToJobName
@@ -65,7 +62,11 @@ never misclassify an app migration that happens to look like a builtin one.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "supabase.fullname" . }}-migrations{{- if .Values.migrations.appendReleaseRevisionToJobName }}-r{{ .Release.Revision }}{{- end }}
+  {{- /*
+  With the ArgoCD hook the Job is deleted before each re-creation, so the
+  name stays stable (a revision suffix would be permanently "-r1" anyway).
+  */}}
+  name: {{ include "supabase.fullname" . }}-migrations{{- if and .Values.migrations.appendReleaseRevisionToJobName (not $argocdHook) }}-r{{ .Release.Revision }}{{- end }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
@@ -122,10 +123,6 @@ spec:
             - name: MIGRATIONS_DIR
               value: {{ $mountPath | quote }}
             {{- if $builtinInit }}
-            # Leading "00-" guarantees this sorts before $MIGRATIONS_DIR
-            # ("/migrations") in the `find | sort` below - "m" < "s"
-            # alphabetically, which would otherwise run app migrations
-            # before the role/schema bootstrap they depend on.
             - name: SUPABASE_INIT_DIR
               value: "/00-supabase-init"
             {{- end }}
@@ -299,9 +296,6 @@ spec:
           image:
             reference: {{ .Values.migrationsCode.image.reference | quote }}
             pullPolicy: {{ .Values.migrationsCode.image.pullPolicy }}
-        {{- end }}
-        {{- if and (not $builtinInit) (not $hasAppMigrations) }}
-        {{- fail "migrations.enabled=true but there is nothing to run: set migrations.builtinInit.enabled=true and/or migrationsCode.image.reference" }}
         {{- end }}
       {{- with .Values.migrations.nodeSelector }}
       nodeSelector:
