@@ -246,8 +246,15 @@ functionsCode:
     pullPolicy: Always
   # Path inside the functions container where the image's filesystem lands.
   # Layout expected: one directory per function, each with an `index.ts`
-  # (e.g. `<mountPath>/hello-world/index.ts`).
+  # (e.g. `<mountPath>/hello-world/index.ts`) — i.e. exactly the contents of
+  # a Supabase CLI project's `supabase/functions/` directory.
   mountPath: /home/deno/functions
+  # Optional shared import map applied to every function that does not carry
+  # its own `deno.json` / `deno.jsonc`. Path is inside the mounted image, so
+  # a repo-root `import_map.json` copied alongside the functions would be
+  # `/home/deno/functions/import_map.json`. Empty = none.
+  # (Per-function `deno.json` is detected automatically and always wins.)
+  importMapPath: ""
 
 migrationsCode:
   image:
@@ -805,9 +812,27 @@ functions:
     tag: "v1.67.4"
     pullPolicy: IfNotPresent
     pullSecrets: []
-  # Whether the router verifies the caller's JWT itself before invoking a
-  # function (in addition to / instead of Kong's key-auth in front of it).
-  verifyJwt: false
+  # Default JWT verification for functions NOT listed in `verifyJwt` below.
+  # `true` matches Supabase Cloud, where `verify_jwt` defaults to true for
+  # every function you don't opt out of in supabase/config.toml.
+  #
+  # Do not lower this casually: Kong deliberately does NOT put `key-auth` on
+  # the /functions/v1 route (a function must be able to serve unauthenticated
+  # webhook callers), so this router is the ONLY thing standing in front of
+  # your functions. `false` here means every function is publicly invokable.
+  verifyJwtDefault: true
+  # Per-function overrides — a direct transcription of the
+  # `[functions.<name>] verify_jwt = <bool>` blocks in supabase/config.toml.
+  # Keep the two in sync: config.toml governs `supabase functions serve`
+  # locally, this governs the deployed router.
+  #   verifyJwt:
+  #     stripe-webhook: false
+  #     process-email-queue: true
+  verifyJwt: {}
+  # Per-invocation memory ceiling for a function worker. 256 matches Supabase
+  # Cloud's default; the upstream self-host example uses 150, which OOM-kills
+  # functions that are perfectly happy on Cloud.
+  memoryLimitMb: 256
   workerTimeoutMs: 180000
   extraEnv: []
   envFrom: []

@@ -37,15 +37,76 @@ metadata:
 data:
   index.ts: |
     // Dispatches to <mountPath>/<first-url-segment>/index.ts.
-    const JWT_SECRET = Deno.env.get('JWT_SECRET')
-    const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true'
+    const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? ''
     const FUNCTIONS_DIR = '{{ $mountPath }}'
+    const SHARED_IMPORT_MAP = {{ .Values.functionsCode.importMapPath | default "" | quote }}
+    // Rendered from functions.verifyJwtDefault / functions.verifyJwt.
+    const VERIFY_JWT_DEFAULT = {{ .Values.functions.verifyJwtDefault }}
+    const VERIFY_JWT: Record<string, boolean> = {{ .Values.functions.verifyJwt | default dict | toJson }}
 
-    async function verifyJWT(jwt: string): Promise<boolean> {
-      const { default: jose } = await import('https://deno.land/x/jose@v4.14.4/index.ts' as any)
-      const encoder = new TextEncoder()
+    const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+
+    // Verified with Web Crypto rather than a remote `jose` import: the
+    // previous version fetched deno.land at request time, which needs public
+    // egress from the pod and fails closed on any locked-down cluster.
+    let hmacKey: Promise<CryptoKey> | null = null
+    function signingKey(): Promise<CryptoKey> {
+      if (!hmacKey) {
+        hmacKey = crypto.subtle.importKey(
+          'raw',
+          encoder.encode(JWT_SECRET),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['verify'],
+        )
+      }
+      return hmacKey
+    }
+
+    function base64UrlDecode(part: string): Uint8Array {
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+      const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='))
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      return bytes
+    }
+
+    async function verifyJWT(token: string): Promise<boolean> {
+      const [header, payload, signature] = token.split('.')
+      if (!header || !payload || !signature) return false
       try {
-        await jose.jwtVerify(jwt, encoder.encode(JWT_SECRET))
+        // Pinned to HS256 on purpose. Accepting whatever `alg` the token
+        // claims is the classic JWT bypass (`alg: none`), and this router is
+        // only given the HMAC secret anyway — an asymmetric token (RS256/
+        // ES256, i.e. the `jwtApiKeys` mode) cannot be checked here and is
+        // rejected rather than waved through.
+        if (JSON.parse(decoder.decode(base64UrlDecode(header))).alg !== 'HS256') return false
+        const valid = await crypto.subtle.verify(
+          'HMAC',
+          await signingKey(),
+          base64UrlDecode(signature),
+          encoder.encode(`${header}.${payload}`),
+        )
+        if (!valid) return false
+        const claims = JSON.parse(decoder.decode(base64UrlDecode(payload)))
+        if (typeof claims.exp === 'number' && claims.exp * 1000 <= Date.now()) return false
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    function json(body: unknown, status: number): Response {
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    async function exists(path: string): Promise<boolean> {
+      try {
+        await Deno.stat(path)
         return true
       } catch {
         return false
@@ -53,51 +114,56 @@ data:
     }
 
     Deno.serve(async (req: Request) => {
-      if (req.method !== 'OPTIONS' && VERIFY_JWT) {
-        const authHeader = req.headers.get('authorization')
-        const token = authHeader?.split(' ')[1]
-        if (!token || !(await verifyJWT(token))) {
-          return new Response(JSON.stringify({ msg: 'Invalid JWT' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' },
-          })
-        }
-      }
-
       const { pathname } = new URL(req.url)
       const serviceName = pathname.split('/')[1]
       if (!serviceName) {
-        return new Response(JSON.stringify({ msg: 'missing function name in request path' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return json({ msg: 'missing function name in request path' }, 400)
       }
 
       const servicePath = `${FUNCTIONS_DIR}/${serviceName}`
-      try {
-        await Deno.stat(`${servicePath}/index.ts`)
-      } catch {
-        return new Response(JSON.stringify({ error: `Function ${serviceName} not found` }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        })
+      if (!(await exists(`${servicePath}/index.ts`))) {
+        return json({ error: `Function ${serviceName} not found` }, 404)
+      }
+
+      // Resolved per function, and only after the function is known to
+      // exist, so a public function stays reachable while its neighbours
+      // stay protected. OPTIONS is always allowed through for CORS
+      // preflight, which carries no Authorization header by definition.
+      const mustVerify = VERIFY_JWT[serviceName] ?? VERIFY_JWT_DEFAULT
+      if (mustVerify && req.method !== 'OPTIONS') {
+        const token = req.headers.get('authorization')?.replace(/^[Bb]earer\s+/, '')
+        if (!token || !(await verifyJWT(token))) {
+          return json({ msg: 'Invalid JWT' }, 401)
+        }
+      }
+
+      // A function's own deno.json wins (this is what `supabase functions
+      // deploy` honours per function); otherwise fall back to the shared map
+      // if one was configured. Passing a non-existent path makes the worker
+      // fail to boot, so both are probed rather than assumed.
+      let importMapPath: string | null = null
+      for (const candidate of [`${servicePath}/deno.json`, `${servicePath}/deno.jsonc`]) {
+        if (await exists(candidate)) {
+          importMapPath = candidate
+          break
+        }
+      }
+      if (!importMapPath && SHARED_IMPORT_MAP && (await exists(SHARED_IMPORT_MAP))) {
+        importMapPath = SHARED_IMPORT_MAP
       }
 
       try {
         const worker = await EdgeRuntime.userWorkers.create({
           servicePath,
-          memoryLimitMb: 150,
+          memoryLimitMb: {{ .Values.functions.memoryLimitMb }},
           workerTimeoutMs: {{ .Values.functions.workerTimeoutMs }},
           noModuleCache: false,
-          importMapPath: null,
+          importMapPath,
           envVars: Object.entries(Deno.env.toObject()),
         })
         return await worker.fetch(req)
       } catch (e) {
-        return new Response(JSON.stringify({ msg: String(e) }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return json({ msg: String(e) }, 500)
       }
     })
 ---
@@ -138,10 +204,25 @@ spec:
       {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.functions.podAnnotations }}
       annotations:
+        {{- /*
+        The router is mounted with `subPath`, and subPath mounts are never
+        refreshed by the kubelet when the ConfigMap changes. Without this,
+        editing functions.verifyJwt / memoryLimitMb would update the
+        ConfigMap and change nothing until someone restarted the pod by hand.
+        Hashes the values the router is rendered from - not the rendered file,
+        which lives in this same template and would recurse.
+        */}}
+        checksum/main: {{ printf "%v|%v|%v|%v|%v|%v"
+          .Values.functions.verifyJwtDefault
+          (.Values.functions.verifyJwt | default dict | toJson)
+          .Values.functions.memoryLimitMb
+          .Values.functions.workerTimeoutMs
+          $mountPath
+          .Values.functionsCode.importMapPath | sha256sum | trunc 16 }}
+        {{- with .Values.functions.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
     spec:
@@ -183,8 +264,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "supabase.cnpgAppSecretName" . | quote }}
                   key: password
-            - name: VERIFY_JWT
-              value: {{ .Values.functions.verifyJwt | quote }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
