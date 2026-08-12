@@ -93,11 +93,32 @@ cnpg:
       secret:
         name: ""
   postgresql:
-    # Supabase's own services (Realtime CDC, pg_cron used by many self-host
-    # setups) expect logical replication + these libraries. Add/remove as
-    # your migrations require (e.g. postgis, pg_stat_statements).
-    sharedPreloadLibraries: []
+    # pg_cron and pg_net are load-time extensions: `CREATE EXTENSION pg_cron`
+    # ERRORS OUT unless pg_cron is preloaded here, and pg_net's CREATE
+    # EXTENSION succeeds but its background worker never starts, so
+    # net.http_* calls queue forever without being sent. Both are extremely
+    # common in migrations exported from Supabase Cloud (scheduled jobs,
+    # webhooks/triggers calling Edge Functions), so both are preloaded by
+    # default.
+    #
+    # This default assumes the default `cnpg.image` (which ships them). If
+    # you point cnpg.image at a vanilla ghcr.io/cloudnative-pg/postgresql
+    # image, EMPTY THIS LIST — Postgres refuses to start when asked to
+    # preload a library the image doesn't contain, which is a hard boot
+    # failure rather than a skipped feature.
+    sharedPreloadLibraries:
+      - pg_cron
+      - pg_net
     parameters:
+      # pg_cron stores its job table in exactly one database, which must be
+      # named here (it defaults to `postgres`, matching supabase.dbName).
+      cron.database_name: postgres
+      # Run cron jobs in background workers instead of opening a libpq TCP
+      # connection to localhost. CNPG's generated pg_hba requires
+      # scram-sha-256 for every TCP connection, but pg_cron connects with no
+      # password — so with the default (`off`) every tick fails auth and NO
+      # job ever runs, silently.
+      cron.use_background_workers: "on"
       max_connections: "300"
       shared_buffers: "512MB"
       work_mem: "8MB"
