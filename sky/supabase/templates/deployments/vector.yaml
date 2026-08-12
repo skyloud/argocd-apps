@@ -79,10 +79,6 @@ data:
     sources:
       kubernetes_logs:
         type: kubernetes_logs
-        # Postgres normally lives in this same namespace, but can be split
-        # out via postgres.namespace (see supabase.postgresNamespaceIsSeparate)
-        # - include both or the "postgres" container's logs (source db_logs
-        # below) never show up at all.
         extra_namespace_label_selector: "kubernetes.io/metadata.name in ({{ .Release.Namespace }}{{ if include "supabase.postgresNamespaceIsSeparate" . }},{{ include "supabase.postgresNamespace" . }}{{ end }})"
 
     transforms:
@@ -257,10 +253,6 @@ data:
           headers:
             x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
         uri: "{{ $analyticsUrl }}/api/logs?source_name=postgres.logs"
-      prometheus:
-        type: prometheus_exporter
-        inputs: [kubernetes_logs]
-        address: 0.0.0.0:9598
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -320,9 +312,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           ports:
-            - name: metrics
-              containerPort: 9598
-              protocol: TCP
             - name: api
               containerPort: 8686
               protocol: TCP
