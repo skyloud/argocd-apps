@@ -92,6 +92,21 @@ cnpg:
     initdb:
       secret:
         name: ""
+  # Keeps the "app" role's password in sync with postgres.appSecret /
+  # bootstrap.initdb.secret AFTER first bootstrap. Without this, CNPG only
+  # ever reads that Secret once (at initdb) — rotating it externally (e.g. an
+  # ExternalSecret backed by AWS Secrets Manager) then updates the Kubernetes
+  # Secret and every consuming service, but the Postgres role itself keeps
+  # the OLD password, so auth fails everywhere at once. (The superuser
+  # credential does not need this: cnpg.superuserSecret is already watched
+  # continuously by the operator.)
+  #
+  # Declares `login` and `passwordSecret` ONLY — deliberately no `inRoles`,
+  # so CNPG does not also try to reconcile role membership. That is owned by
+  # files/supabase-init/ (see its role-membership grants), and CNPG taking it
+  # over here would fight that bootstrap SQL.
+  managedRoles:
+    enabled: false
   postgresql:
     # pg_cron and pg_net are load-time extensions: `CREATE EXTENSION pg_cron`
     # ERRORS OUT unless pg_cron is preloaded here, and pg_net's CREATE
@@ -371,6 +386,62 @@ migrations:
   nodeSelector: {}
   affinity: {}
   tolerations: []
+
+# =============================================================================
+# External Secrets Operator — optional, off by default so the chart still
+# deploys on a cluster without ESO.
+#
+# Every Secret this chart consumes is bring-your-own (see the table below).
+# Enabling this makes the chart render the ExternalSecret resources that
+# produce them, instead of you creating each one with `kubectl create secret`.
+#
+# Each item renders one ExternalSecret, and so one Kubernetes Secret, pairing
+# `secretKey` (the key written into the Secret) with a `remoteRef` naming the
+# secret in the backing store and the JSON `property` inside it.
+#
+# What Supabase expects, and the exact keys each Secret must carry:
+#
+#   Secret                | keys                                    | type
+#   ----------------------|-----------------------------------------|-----------
+#   jwt.secretName        | secret, anonKey, serviceKey             | Opaque
+#   realtime.encryption…  | secretKeyBase                           | Opaque
+#   meta.encryptionSecret | cryptoKey                               | Opaque
+#   analytics.tokensSec…  | publicAccessToken, privateAccessToken   | Opaque
+#   CNPG app secret       | username, password                      | basic-auth
+#   CNPG superuser secret | username, password                      | basic-auth
+#
+# The two CNPG Secrets need `type: kubernetes.io/basic-auth` (CNPG rejects
+# anything else) AND a copy in `postgres.namespace` when Postgres is split out
+# — list the same item twice with different `namespace` values, since
+# Kubernetes has no cross-namespace secretKeyRef.
+#
+# The anon/service JWTs cannot be machine-generated from the outside: they are
+# HS256 tokens that must be signed with the same `secret`. Author those three
+# together in one Secrets Manager entry.
+# =============================================================================
+externalSecrets:
+  enabled: false
+  # Applied to every item unless the item overrides it.
+  secretStoreRef:
+    name: aws-secrets-manager-secret-store
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+  # Negative so ESO has written the Secrets before the CNPG Cluster and the
+  # Deployments that secretKeyRef them are applied (wave 0).
+  syncWave: "-2"
+  items: []
+  #  - name: supabase-jwt
+  #    # namespace: ""            # empty = this release's namespace
+  #    # type: Opaque             # omit for Opaque; kubernetes.io/basic-auth for CNPG
+  #    data:
+  #      - secretKey: secret      # key written into the Kubernetes Secret
+  #        remoteRef:
+  #          key: supabase-jwt    # AWS Secrets Manager secret name
+  #          property: secret     # JSON property inside it
+  #      - secretKey: anonKey
+  #        remoteRef: { key: supabase-jwt, property: anonKey }
+  #      - secretKey: serviceKey
+  #        remoteRef: { key: supabase-jwt, property: serviceKey }
 
 # =============================================================================
 # JWT — bring your own. Generate an HMAC secret + anon/service JWTs with any

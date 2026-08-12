@@ -9,6 +9,7 @@ cluster (CRD postgresql.cnpg.io/v1).
 {{- if eq $tag "latest" -}}
 {{- fail "cnpg.image.tag cannot be 'latest': CNPG's admission webhook rejects unpinned tags (it can't detect upgrades). Pin an explicit version." -}}
 {{- end -}}
+{{- $appSecret := default .Values.postgres.appSecret.name .Values.cnpg.bootstrap.initdb.secret.name -}}
 {{- /*
 When postgres.namespace differs from this release's namespace, that
 namespace is NOT created by this chart — same convention as every other
@@ -62,10 +63,28 @@ spec:
     initdb:
       database: {{ include "supabase.dbName" . | quote }}
       owner: "app"
-      {{- with (default .Values.postgres.appSecret.name .Values.cnpg.bootstrap.initdb.secret.name) }}
+      {{- with $appSecret }}
       secret:
         name: {{ . | quote }}
       {{- end }}
+
+  {{- /*
+  CNPG only reads bootstrap.initdb.secret ONCE, at initdb. Without this,
+  rotating the app password externally (e.g. an ExternalSecret) updates the
+  Kubernetes Secret and every consuming service, but the Postgres role itself
+  keeps the old password — auth then fails everywhere at once. `login` and
+  `passwordSecret` only, deliberately no `inRoles`: role-membership grants are
+  owned by files/supabase-init/, and CNPG reconciling that here would fight it.
+  */}}
+  {{- if .Values.cnpg.managedRoles.enabled }}
+  managed:
+    roles:
+      - name: "app"
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ required "postgres.appSecret.name or cnpg.bootstrap.initdb.secret.name is required when cnpg.managedRoles.enabled=true" $appSecret | quote }}
+  {{- end }}
 
   {{- with .Values.cnpg.postgresql }}
   postgresql:
