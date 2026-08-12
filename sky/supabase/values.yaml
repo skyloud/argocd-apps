@@ -903,6 +903,15 @@ functions:
 # =============================================================================
 analytics:
   enabled: false
+  # Logflare tenant tokens (keys `publicAccessToken` / `privateAccessToken`,
+  # plain UUIDs). Empty = the chart generates them and persists them across
+  # upgrades via `lookup`. Set this to a pre-existing Secret when deploying
+  # through ArgoCD — `lookup` returns nothing under `helm template`, so the
+  # tokens would otherwise be regenerated on every sync and orphan the
+  # Logflare tenant. Same applies to `realtime.encryptionSecret` and
+  # `meta.encryptionSecret`.
+  tokensSecret:
+    name: ""
   replicaCount: 1
   image:
     repository: supabase/logflare
