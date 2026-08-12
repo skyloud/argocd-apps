@@ -9,6 +9,19 @@ migrationsCode.image.reference):
     read-only via Kubernetes ImageVolume (KEP-4639) — requires the
     `ImageVolume` feature gate on the target cluster.
 
+Two separate ledgers, deliberately:
+  - supabase_migrations.schema_migrations tracks YOUR migrations only, with
+    the exact column layout the Supabase CLI creates (version/statements/
+    name). Keeping it byte-compatible means `supabase migration list`,
+    `db push` and `db pull` work against this self-hosted database the same
+    way they worked against Supabase Cloud - the common case for a project
+    migrating off Cloud with an existing supabase/migrations/ directory.
+  - supabase_migrations.chart_bootstrap tracks the builtin init files. They
+    live outside schema_migrations so (a) the CLI's view matches your repo
+    1:1, and (b) a builtin file can never collide with an app migration that
+    happens to share its version prefix (a `supabase db dump` baseline is
+    commonly numbered 00000000000000_*, exactly like the builtin files).
+
 Deliberately NOT a Helm hook: a `pre-install` hook runs before every other
 resource in the SAME release, including the CNPG Cluster this Job depends on
 for its superuser Secret — on a first install that Secret doesn't exist yet,
@@ -142,7 +155,30 @@ spec:
               {{- end }}
 
               psql_exec -c "CREATE SCHEMA IF NOT EXISTS supabase_migrations;"
-              psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
+
+              {{- /*
+              Exactly the DDL the Supabase CLI itself applies (version-only
+              table, then two ADD COLUMN IF NOT EXISTS) so a database
+              bootstrapped by this chart and one bootstrapped by
+              `supabase db push` are indistinguishable to the CLI. `statements`
+              stays NULL here - the CLI only reads `version` to decide what is
+              pending, and storing every migration's full text a second time
+              in the database buys nothing.
+              */}}
+              psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY);"
+              psql_exec -c "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[];"
+              psql_exec -c "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS name text;"
+
+              {{- if $builtinInit }}
+              psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.chart_bootstrap (version text NOT NULL PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
+              {{- /*
+              Installs from before the two ledgers were split recorded the
+              builtin files in schema_migrations. Move those rows across
+              rather than re-running a bootstrap that is not idempotent
+              (`create role supabase_admin` fails if the role exists).
+              */}}
+              psql_exec -c "INSERT INTO supabase_migrations.chart_bootstrap (version, name) SELECT version, name FROM supabase_migrations.schema_migrations WHERE version IN ({{ $builtinVersionList }}) ON CONFLICT (version) DO NOTHING; DELETE FROM supabase_migrations.schema_migrations WHERE version IN ({{ $builtinVersionList }});"
+              {{- end }}
 
               {{- /*
               -L: ConfigMap volumes (the builtin bootstrap) mount files as
@@ -152,23 +188,66 @@ spec:
               the target instead. Harmless for the ImageVolume-mounted app
               migrations, which are already regular files either way.
               */}}
+              apply_dir() {
+                dir=$1
+                ledger=$2
+                find -L "$dir" -maxdepth 1 -type f -name '*.sql' | sort | while IFS= read -r f; do
+                  base=$(basename "$f" .sql)
+                  version=$(printf '%s' "$base" | cut -d'_' -f1)
+                  applied=$(psql_exec -tAc "SELECT 1 FROM ${ledger} WHERE version = '${version}'")
+                  if [ "$applied" = "1" ]; then
+                    echo "== skip $f (version $version already applied)"
+                    continue
+                  fi
+                  echo "== applying $f (version $version)"
+                  psql_exec -f "$f"
+                  psql_exec -c "INSERT INTO ${ledger}(version, name) VALUES ('${version}', '$(basename "$f")');"
+                  echo "== applied $f"
+                done
+              }
+
               {{- if $builtinInit }}
-              find -L "$SUPABASE_INIT_DIR" "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' 2>/dev/null | sort | while IFS= read -r f; do
-              {{- else }}
-              find -L "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' | sort | while IFS= read -r f; do
+              apply_dir "$SUPABASE_INIT_DIR" supabase_migrations.chart_bootstrap
               {{- end }}
-                base=$(basename "$f" .sql)
-                version=$(printf '%s' "$base" | cut -d'_' -f1)
-                applied=$(psql_exec -tAc "SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = '${version}'")
-                if [ "$applied" = "1" ]; then
-                  echo "== skip $f (version $version already applied)"
-                  continue
-                fi
-                echo "== applying $f (version $version)"
-                psql_exec -f "$f"
-                psql_exec -c "INSERT INTO supabase_migrations.schema_migrations(version, name) VALUES ('${version}', '$(basename "$f")');"
-                echo "== applied $f"
-              done
+              {{- if $hasAppMigrations }}
+              apply_dir "$MIGRATIONS_DIR" supabase_migrations.schema_migrations
+              {{- end }}
+
+              {{- if $vault.enabled }}
+              {{- /*
+              Vault secrets are upserted AFTER migrations, because the
+              supabase_vault extension is created by them, and because a
+              trigger added by a migration may read a secret on its very
+              first firing. Keyed by name (delete + create): every reader
+              looks secrets up by name via vault.decrypted_secrets, and
+              rewriting them each run is what lets a rotated JWT Secret or a
+              changed kong.publicUrl actually reach the database.
+              */}}
+              if [ "$(psql_exec -tAc "SELECT 1 FROM pg_extension WHERE extname = 'supabase_vault'")" != "1" ]; then
+                echo "== supabase_vault not installed - skipping vault bootstrap" >&2
+              else
+                {{- /*
+                Both statements in ONE -c so psql sends them as a single
+                query string, i.e. one implicit transaction: a failing
+                create_secret rolls the delete back instead of leaving the
+                secret missing. (Two -c flags would be two transactions.)
+                */}}
+                vault_put() {
+                  psql_exec -v vname="$1" -v vsecret="$2" \
+                    -c "DELETE FROM vault.secrets WHERE name = :'vname'; SELECT vault.create_secret(:'vsecret', :'vname', 'managed by the supabase Helm chart');" \
+                    >/dev/null
+                  echo "== vault secret $1 set"
+                }
+                {{- if $vault.supabaseKeys }}
+                vault_put SUPABASE_URL "$VAULT_SUPABASE_URL"
+                vault_put SUPABASE_ANON_KEY "$VAULT_SUPABASE_ANON_KEY"
+                vault_put SUPABASE_SERVICE_ROLE_KEY "$VAULT_SUPABASE_SERVICE_ROLE_KEY"
+                {{- end }}
+                {{- range $i, $e := $vault.extra }}
+                vault_put {{ $e.name | quote }} "$VAULT_EXTRA_{{ $i }}"
+                {{- end }}
+              fi
+              {{- end }}
 
               echo "== migrations complete"
           volumeMounts:

@@ -268,9 +268,12 @@ migrationsCode:
 # `migrationsCode` image's app-level migrations run after, in the same Job.
 # -----------------------------------------------------------------------------
 # A plain Job (NOT a Helm hook — see templates/jobs/migrations.yaml for why),
-# applied alongside the rest of the release. Tracks applied versions in
-# `supabase_migrations.schema_migrations` (same convention as the Supabase
-# CLI) so re-running `helm upgrade` is a no-op once a migration has applied.
+# applied alongside the rest of the release. Your migrations are tracked in
+# `supabase_migrations.schema_migrations` using the exact column layout the
+# Supabase CLI creates, so `supabase migration list` / `db push` / `db pull`
+# keep working against this database — the builtin bootstrap is tracked
+# separately in `supabase_migrations.chart_bootstrap` to keep the CLI's view
+# identical to your repo. Re-running is a no-op once a migration has applied.
 # Connects directly to the CNPG primary with the superuser role (DDL/role
 # creation cannot go through PgDog's transaction pooling).
 # =============================================================================
