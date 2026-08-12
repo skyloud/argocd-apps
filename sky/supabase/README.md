@@ -64,44 +64,58 @@ this chart doesn't care).
 
 ## 2. Bootstrapping Supabase roles
 
-This chart does **not** embed Supabase's own Postgres bootstrap SQL (schemas,
-roles, extensions, grants) — that would silently drift from upstream Supabase
-over time if hardcoded into the chart. Instead, the first migration in your
-`migrationsCode` image must create the standard Supabase roles/schemas that
-every service here assumes exist:
+Handled for you: `migrations.builtinInit.enabled` (default `true`) bakes the
+Supabase role/schema/extension bootstrap in `files/supabase-init/` into a
+chart-owned ConfigMap, and the migrations Job applies it before any of your
+own migrations. It creates the schemas (`auth`, `storage`, `graphql_public`,
+`extensions`, `_realtime`), the roles every service here authenticates as
+(`anon`, `authenticated`, `service_role`, `authenticator`, `supabase_admin`,
+`supabase_auth_admin`, `supabase_storage_admin`, and
+`supabase_realtime_admin` with `REPLICATION`) all sharing the CNPG app
+password, and the extensions — each one guarded by a
+`pg_available_extensions` check, so the same SQL works against the bundled
+`ghcr.io/skyloud/supabase-postgres` image and against a vanilla
+`ghcr.io/cloudnative-pg/postgresql` one, just with fewer extensions on the
+latter.
 
-- Schemas: `auth`, `storage`, `graphql_public`, `extensions`, `supabase_migrations` (created automatically), `_realtime` / `realtime`.
-- Roles: `anon`, `authenticated`, `service_role`, `authenticator`,
-  `supabase_admin`, `supabase_auth_admin`, `supabase_storage_admin`,
-  `supabase_realtime_admin` (needs `REPLICATION`) — all sharing the same
-  password as the CNPG app Secret (`postgres.appSecret`), since that's the
-  only password this chart wires through to PgDog/Realtime/Storage/etc.
-- Extensions: at minimum `pgcrypto`, `uuid-ossp`; add `pgjwt`, `pg_graphql`,
-  `pgsodium` etc. depending on which Supabase features you use.
+Adapted from the upstream
+[supabase/postgres init scripts](https://github.com/supabase/postgres/tree/develop/migrations/db/init-scripts).
+Set `migrations.builtinInit.enabled: false` to bring your own bootstrap via
+`migrationsCode` instead.
 
-Reference: [supabase/postgres init scripts](https://github.com/supabase/postgres/tree/develop/migrations/db/init-scripts)
-publish this exact SQL — copy what you need as `<migrationsCode>/0000_supabase_init.sql`
-(or similar) so it runs first (files apply in lexicographic order).
+### Two migration ledgers
+
+The builtin bootstrap is tracked in `supabase_migrations.chart_bootstrap`;
+**your** migrations are tracked in `supabase_migrations.schema_migrations`,
+created with the exact column layout the Supabase CLI uses
+(`version` / `statements` / `name`). Two reasons:
+
+- `supabase migration list`, `db push` and `db pull` keep working against
+  this database, and see exactly the migrations in your repo — no chart-owned
+  rows to explain away.
+- A builtin file can never shadow one of yours. Both ledgers are keyed by the
+  `<version>` filename prefix, and a `supabase db dump` baseline is commonly
+  numbered `00000000000000_*.sql` — the same as the first builtin file.
+
+Installs created before this split are migrated automatically: the builtin
+rows are moved out of `schema_migrations` on the next run rather than
+re-applying a bootstrap that isn't idempotent.
 
 ## 3. Functions & migrations images
 
 Both are just OCI images built with `COPY` — no entrypoint, no running
-process required, only the filesystem is used (mounted via ImageVolume):
+process required, only the filesystem is used (mounted via ImageVolume). Build
+them from your Supabase project repo, whose `supabase/functions/` and
+`supabase/migrations/` directories already have the layout the chart expects:
 
 ```dockerfile
-# supabase-functions image
 FROM scratch
-COPY functions/ /
-# Layout: /<function-name>/index.ts for each function
+COPY supabase/functions/ /     # -> <mountPath>/<function-name>/index.ts
 ```
 
 ```dockerfile
-# supabase-migrations image
 FROM scratch
-COPY migrations/ /
-# Layout: flat directory of <version>_<name>.sql files, e.g.
-#   0000_supabase_init.sql
-#   20240115120000_add_profiles_table.sql
+COPY supabase/migrations/ /    # -> <mountPath>/<version>_<name>.sql (flat)
 ```
 
 Push them anywhere the cluster can pull from, then set:
@@ -115,10 +129,92 @@ migrationsCode:
     reference: registry.example.com/myorg/supabase-migrations:1.0.0
 ```
 
-The migrations Job tracks applied versions in
-`supabase_migrations.schema_migrations` (same convention as the Supabase
-CLI), so re-running `helm upgrade` with new migration files only applies the
-new ones.
+Three things to know about the migrations image:
+
+- The runner reads the mount with `-maxdepth 1`, so keep the `.sql` files
+  flat — subdirectories are ignored.
+- Files are recorded by `<version>` (everything before the first underscore),
+  so re-running only applies what's new. Editing a `.sql` file that already
+  ran changes nothing on that database; add a new migration instead.
+- Pin a real tag rather than `:latest` on both images. The chart mounts by
+  reference, so with a moving tag "which code is running" depends on when each
+  pod last pulled.
+
+## Deploying via ArgoCD
+
+ArgoCD does not run `helm upgrade` — it renders the chart with
+`helm template` and applies the result. Two chart behaviours depend on real
+Helm and silently misbehave otherwise, so **both of these are required**:
+
+```yaml
+migrations:
+  # .Release.Revision is always 1 under `helm template`, so the
+  # revision-suffixed Job name never changes, the completed Job is never
+  # replaced, and new migrations are silently never applied. This annotates
+  # the Job as an ArgoCD Sync hook (delete-before-create) instead.
+  argocdHook: true
+
+# `lookup` returns nothing under `helm template`, so any secret the chart
+# auto-generates is re-randomised on every render — and `selfHeal` applies it.
+# Supply them from outside instead.
+realtime:
+  encryptionSecret: { name: supabase-realtime-encryption }  # key: secretKeyBase
+meta:
+  encryptionSecret: { name: supabase-meta-encryption }      # key: cryptoKey
+analytics:
+  tokensSecret: { name: supabase-analytics-tokens }         # keys: publicAccessToken, privateAccessToken
+```
+
+Left unset, Realtime invalidates every session on each sync, postgres-meta
+loses the key it encrypted Studio's stored credentials with, and Logflare's
+tenant is orphaned.
+
+The `k8s/supabase` Terraform module in `iac-modules` sets all four for you and
+generates the three Secrets alongside the Postgres credentials it already
+owns.
+
+## Migrating an existing project off Supabase Cloud
+
+The chart consumes a CLI-shaped project as-is (`supabase/migrations/*.sql`,
+`supabase/functions/<name>/index.ts`), but four things do not travel with a
+`git clone`:
+
+1. **Load-time extensions.** `CREATE EXTENSION pg_cron` *fails* unless
+   `pg_cron` is in `cnpg.postgresql.sharedPreloadLibraries`, and `pg_net`
+   creates cleanly but never sends a request without it. Both are preloaded by
+   default here — leave them unless you also replace `cnpg.image`.
+2. **Per-function JWT verification.** Cloud reads `verify_jwt` from
+   `supabase/config.toml`; nothing in the repo is read at deploy time here.
+   Transcribe it into `functions.verifyJwt`, keeping in mind that a function
+   *absent* from config.toml defaults to verified:
+
+   ```yaml
+   functions:
+     verifyJwtDefault: true       # matches Cloud's default
+     verifyJwt:
+       stripe-webhook: false      # mirror each [functions.<name>] block
+   ```
+
+   This router is the only thing in front of your functions — Kong
+   deliberately puts no `key-auth` on `/functions/v1` so webhook callers can
+   reach it.
+3. **Vault secrets.** SQL that calls an Edge Function from the database
+   (`net.http_post` in a trigger or cron job) reads its URL and key out of
+   `vault.decrypted_secrets`. On Cloud those rows were created through the
+   dashboard or Management API, so they are *not* in your migrations and a
+   self-hosted database starts without them. Enable
+   `migrations.vaultBootstrap` to have the chart upsert `SUPABASE_URL`,
+   `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` after migrations, plus
+   any project-specific names via `vaultBootstrap.extra`.
+4. **Scheduled jobs.** `cron.schedule(...)` calls made through the Cloud
+   dashboard aren't in your migrations either. Add them as a new migration now
+   that pg_cron works — that's the only way they'll exist here.
+
+Function code itself needs no changes: `npm:`, `jsr:`, `https://esm.sh/...`
+and `https://deno.land/...` specifiers all resolve at runtime, so the
+functions pod needs egress to those registries (or a pull-through mirror). A
+per-function `deno.json` is detected and used as its import map, matching
+`supabase functions deploy`.
 
 ## Postgres / PgDog topology
 
@@ -173,6 +269,20 @@ to the primary:
 - Vector is a DaemonSet — set `vector.tolerations` to cover every node pool
   you want logs from, or it simply won't schedule (and won't collect logs)
   there.
+- **Ingress controllers impose their own limits in front of Kong**, and their
+  defaults are well below what Supabase needs — ingress-nginx caps request
+  bodies at 1MB, so uploads fail with a 413 regardless of
+  `storage.fileSizeLimit`. The chart stays controller-agnostic and sets no
+  annotations for you; see the comment on `kong.ingress.annotations`.
+- **The Edge Functions router only verifies HS256 tokens.** In `jwtApiKeys`
+  (asymmetric) mode, Kong translates publishable/secret keys into RS256/ES256
+  JWTs for the other routes, but the functions router is only given the HMAC
+  secret and rejects anything else. Set `functions.verifyJwt.<name>: false`
+  and verify inside the function if you need asymmetric tokens there.
+- **Autoscaling requires a metrics target.** `<svc>.autoscaling.enabled: true`
+  with neither `targetCPUUtilizationPercentage` nor
+  `targetMemoryUtilizationPercentage` fails template rendering rather than
+  producing an HPA the API server would reject.
 
 ## Verifying locally
 
