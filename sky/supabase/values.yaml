@@ -424,6 +424,18 @@ kong:
     tag: "3.8"
     pullPolicy: IfNotPresent
     pullSecrets: []
+  # Upstream timeouts in ms for the two routes whose requests legitimately run
+  # long. Kong's built-in default is 60s and it closes the connection itself,
+  # so the caller gets a 504 while the upstream logs show a request that
+  # completed fine.
+  timeouts:
+    # Empty = track `functions.workerTimeoutMs`, so the gateway never cuts in
+    # before the function worker's own deadline. Set a number to decouple them.
+    functions: null
+    # Large multipart uploads/downloads through /storage/v1. Keep this at or
+    # above the time a client needs to push `storage.fileSizeLimit` bytes over
+    # the slowest link you care about.
+    storage: 300000
   extraEnv: []
   envFrom: []
   podAnnotations: {}
@@ -446,6 +458,21 @@ kong:
   ingress:
     enabled: false
     className: ""
+    # Left empty on purpose — this chart stays ingress-controller-agnostic.
+    #
+    # But note that ingress controllers impose their own body-size and timeout
+    # limits IN FRONT of Kong, and their defaults are far below what Supabase
+    # needs: ingress-nginx caps request bodies at 1MB, so every upload larger
+    # than that fails with a 413 no matter what `storage.fileSizeLimit` says,
+    # and its 60s read timeout truncates long Edge Function calls. Whichever
+    # controller you use, raise both. For ingress-nginx:
+    #
+    #   nginx.ingress.kubernetes.io/proxy-body-size: "500m"   # >= storage.fileSizeLimit
+    #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300" # >= kong.timeouts.functions / 1000
+    #   nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    #
+    # For Traefik, the equivalents live on the IngressRoute/Middleware
+    # (buffering maxRequestBodyBytes, forwardingTimeouts) rather than here.
     annotations: {}
     hosts: []
     tls: []

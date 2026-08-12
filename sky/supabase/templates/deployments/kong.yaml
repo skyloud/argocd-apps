@@ -9,6 +9,16 @@ Secret) rather than baked into the ConfigMap in plaintext.
 {{- if .Values.kong.enabled -}}
 {{- $svc := dict "root" . "svc" "kong" -}}
 {{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- /*
+Kong's own upstream timeouts default to 60s, which is shorter than both a
+long Edge Function invocation and a large Storage upload — Kong closes the
+connection first and the caller sees a generic 504 with nothing wrong in the
+upstream's own logs. The functions figure tracks functions.workerTimeoutMs
+unless overridden, so the gateway can never cut in before the worker's own
+deadline.
+*/}}
+{{- $fnTimeout := .Values.kong.timeouts.functions | default .Values.functions.workerTimeoutMs | int -}}
+{{- $storageTimeout := .Values.kong.timeouts.storage | int -}}
 {{- if .Values.kong.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
@@ -270,6 +280,8 @@ data:
     {{- if .Values.storage.enabled }}
       - name: storage-v1
         url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "storage") }}:{{ .Values.storage.service.port }}/
+        read_timeout: {{ $storageTimeout }}
+        write_timeout: {{ $storageTimeout }}
         routes:
           # Destructive admin routes (empty/delete a bucket) additionally require
           # basic-auth (defense in depth): with no `studio.basicAuth.name` set,
@@ -324,6 +336,8 @@ data:
     {{- if .Values.functions.enabled }}
       - name: functions-v1
         url: http://{{ include "supabase.svcFullname" (dict "root" $ "svc" "functions") }}:{{ .Values.functions.service.port }}/
+        read_timeout: {{ $fnTimeout }}
+        write_timeout: {{ $fnTimeout }}
         routes:
           - name: functions-v1-all
             strip_path: true
