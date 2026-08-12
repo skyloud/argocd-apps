@@ -292,38 +292,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
----
-{{- if .Values.functions.autoscaling.enabled }}
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: {{ $fullname }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "supabase.svcLabels" $svc | nindent 4 }}
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: {{ $fullname }}
-  minReplicas: {{ .Values.functions.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.functions.autoscaling.maxReplicas }}
-  metrics:
-    {{- if .Values.functions.autoscaling.targetCPUUtilizationPercentage }}
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: {{ .Values.functions.autoscaling.targetCPUUtilizationPercentage }}
-    {{- end }}
-    {{- if .Values.functions.autoscaling.targetMemoryUtilizationPercentage }}
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: {{ .Values.functions.autoscaling.targetMemoryUtilizationPercentage }}
-    {{- end }}
-{{- end }}
 {{- end }}

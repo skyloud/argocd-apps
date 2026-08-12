@@ -207,6 +207,9 @@ pgdog:
     maxReplicas: 6
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
 
 # =============================================================================
 # Edge Functions code / SQL migrations — mounted via Kubernetes ImageVolume.
@@ -379,6 +382,9 @@ kong:
     maxReplicas: 6
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
 
 # =============================================================================
 # GoTrue (auth) — DB_HOST direct on the CNPG primary (pgx + PgDog transaction
@@ -428,6 +434,9 @@ auth:
     maxReplicas: 6
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
 
 # =============================================================================
 # PostgREST (rest) — routed through PgDog.
@@ -473,6 +482,9 @@ rest:
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
 
 # =============================================================================
 # Realtime — DB_HOST direct on the primary (owns a logical replication slot;
@@ -521,6 +533,9 @@ realtime:
     maxReplicas: 6
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
   # SECRET_KEY_BASE (Erlang cookie/token signing). Empty = chart auto-generates
   # and persists one (`{release}-realtime`) across upgrades via `lookup`.
   encryptionSecret:
@@ -583,6 +598,9 @@ storage:
     maxReplicas: 8
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
 
 # =============================================================================
 # postgres-meta — admin API over the Postgres schema, consumed by Studio.
@@ -753,6 +771,9 @@ functions:
     maxReplicas: 8
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
+    # HPA scaling behavior (autoscaling/v2), e.g. a long
+    # stabilizationWindowSeconds to damp scale-down. Passed through as-is.
+    behavior: {}
 
 # =============================================================================
 # Analytics (Logflare) — self-hosted single-tenant log backend consumed by

@@ -578,38 +578,4 @@ spec:
           {{- end }}
     {{- end }}
 {{- end }}
----
-{{- if .Values.kong.autoscaling.enabled }}
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: {{ $fullname }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "supabase.svcLabels" $svc | nindent 4 }}
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: {{ $fullname }}
-  minReplicas: {{ .Values.kong.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.kong.autoscaling.maxReplicas }}
-  metrics:
-    {{- if .Values.kong.autoscaling.targetCPUUtilizationPercentage }}
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: {{ .Values.kong.autoscaling.targetCPUUtilizationPercentage }}
-    {{- end }}
-    {{- if .Values.kong.autoscaling.targetMemoryUtilizationPercentage }}
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: {{ .Values.kong.autoscaling.targetMemoryUtilizationPercentage }}
-    {{- end }}
-{{- end }}
 {{- end }}
