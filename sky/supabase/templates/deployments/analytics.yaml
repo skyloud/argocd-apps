@@ -4,10 +4,12 @@ Logs Explorer. Env var contract follows the official self-host reference:
 https://github.com/supabase/supabase/blob/master/docker/docker-compose.logs.yml
 
 Connects as `supabase_admin` (superuser, created by the built-in bootstrap -
-see files/supabase-init/) directly on the CNPG primary: it owns/creates its
-own `_analytics` schema in the same database everything else in this chart
-uses (DB_HOST direct, not through PgDog - schema creation is DDL-heavy at
-first boot).
+see files/supabase-init/) directly on the CNPG primary (DB_HOST direct, not
+through PgDog - schema/database creation is DDL-heavy at first boot), into
+its own `_supabase` database and `_analytics` schema - both created by the
+built-in bootstrap, matching official self-host convention (a dedicated
+database for internal state, separate from the app database everything
+else in this chart uses).
 */}}
 {{- if .Values.analytics.enabled -}}
 {{- $svc := dict "root" . "svc" "analytics" -}}
@@ -106,8 +108,13 @@ spec:
             # DB_DATABASE/DB_PASSWORD must precede POSTGRES_BACKEND_URL: K8s
             # only resolves `$(VAR)` for variables defined earlier in the
             # same container's env list.
+            #
+            # `_supabase` (not this chart's main app database) matches
+            # official self-host convention (docker/volumes/db/logs.sql) -
+            # a dedicated database for internal-only state, created by the
+            # built-in bootstrap (see files/supabase-init/).
             - name: DB_DATABASE
-              value: {{ include "supabase.dbName" . | quote }}
+              value: "_supabase"
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
