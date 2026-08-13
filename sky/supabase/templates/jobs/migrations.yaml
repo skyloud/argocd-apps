@@ -247,15 +247,26 @@ spec:
                 echo "== supabase_vault not installed - skipping vault bootstrap" >&2
               else
                 {{- /*
-                Both statements in ONE -c so psql sends them as a single
-                query string, i.e. one implicit transaction: a failing
+                Fed on stdin rather than with -c. psql only performs :'var'
+                interpolation on input it lexes itself; -c is documented as
+                taking a string with "no psql-specific features" and hands it
+                to the server verbatim, so :'vname' reaches Postgres literally
+                and fails with `syntax error at or near ":"`. Reading from
+                stdin restores the substitution, and --single-transaction
+                restores what a single -c gave for free: a failing
                 create_secret rolls the delete back instead of leaving the
-                secret missing. (Two -c flags would be two transactions.)
+                secret missing.
+
+                Values still never touch the command line or a file - :'vsecret'
+                does the literal quoting server-side, so a JWT containing a
+                quote or a backslash cannot break out of the statement.
                 */}}
                 vault_put() {
-                  psql_exec -v vname="$1" -v vsecret="$2" \
-                    -c "DELETE FROM vault.secrets WHERE name = :'vname'; SELECT vault.create_secret(:'vsecret', :'vname', 'managed by the supabase Helm chart');" \
-                    >/dev/null
+                  printf '%s\n' \
+                    "DELETE FROM vault.secrets WHERE name = :'vname';" \
+                    "SELECT vault.create_secret(:'vsecret', :'vname', 'managed by the supabase Helm chart');" \
+                    | psql_exec -v vname="$1" -v vsecret="$2" --single-transaction -f - \
+                      >/dev/null
                   echo "== vault secret $1 set"
                 }
                 {{- if $vault.supabaseKeys }}
