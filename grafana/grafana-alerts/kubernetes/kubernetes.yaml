@@ -146,6 +146,77 @@ spec:
             env: "{{ $labels.env }}"
             summary: "Clock skew detected on {{ $labels.instance }}"
 
+    - name: kubernetes-nodes-disk-forecast
+      rules:
+        - record: node_filesystem_seconds_until_80pct_full
+          expr: |
+            (
+              (0.2 * node_filesystem_size_bytes{mountpoint="/etc/hostname",job="node-exporter"})
+              -
+              node_filesystem_avail_bytes{mountpoint="/etc/hostname",job="node-exporter"}
+            )
+            /
+            deriv(node_filesystem_avail_bytes{mountpoint="/etc/hostname",job="node-exporter"}[6h])
+            and (deriv(node_filesystem_avail_bytes{mountpoint="/etc/hostname",job="node-exporter"}[6h]) < 0)
+            and on(instance, device) (node_filesystem_readonly{mountpoint="/etc/hostname",job="node-exporter"} == 0)
+
+        - record: node_filesystem_80pct_breach_epoch_local
+          expr: |
+            time() + 7200 + node_filesystem_seconds_until_80pct_full
+
+        - record: node_filesystem_80pct_breach_is_offhours
+          expr: |
+            (
+              (day_of_week(node_filesystem_80pct_breach_epoch_local) == bool 0)
+              + (day_of_week(node_filesystem_80pct_breach_epoch_local) == bool 6)
+              + (
+                  (day_of_week(node_filesystem_80pct_breach_epoch_local) >= bool 1)
+                  * (day_of_week(node_filesystem_80pct_breach_epoch_local) <= bool 4)
+                  * (
+                      (hour(node_filesystem_80pct_breach_epoch_local) < bool 9)
+                      + (hour(node_filesystem_80pct_breach_epoch_local) >= bool 18)
+                    )
+                )
+              + (
+                  (day_of_week(node_filesystem_80pct_breach_epoch_local) == bool 5)
+                  * (
+                      (hour(node_filesystem_80pct_breach_epoch_local) < bool 9)
+                      + (hour(node_filesystem_80pct_breach_epoch_local) >= bool 17)
+                    )
+                )
+            ) > 0
+
+        - record: node_business_hours_now
+          expr: |
+            (
+              (
+                (day_of_week(vector(time() + 7200)) >= bool 1)
+                * (day_of_week(vector(time() + 7200)) <= bool 4)
+                * (hour(vector(time() + 7200)) >= bool 9)
+                * (hour(vector(time() + 7200)) < bool 18)
+              )
+              +
+              (
+                (day_of_week(vector(time() + 7200)) == bool 5)
+                * (hour(vector(time() + 7200)) >= bool 9)
+                * (hour(vector(time() + 7200)) < bool 17)
+              )
+            ) > 0
+
+        - alert: HostDiskUsagePredictedOffHoursBreach
+          expr: |
+            node_filesystem_seconds_until_80pct_full <= 259200
+            and (node_filesystem_80pct_breach_is_offhours == 1)
+            and on() (node_business_hours_now == 1)
+          for: 30m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "Disk usage on {{ $labels.instance }}:{{ $labels.mountpoint }} is projected (linear 6h trend) to cross 80% within {{ $value | humanizeDuration }}, outside business hours. Act now while it's still business hours."
+
     - name: kubernetes-pods
       rules:
         - alert: NoPodMetrics
