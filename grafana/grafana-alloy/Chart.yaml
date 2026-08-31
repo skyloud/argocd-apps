@@ -1,9 +1,20 @@
 apiVersion: v2
 name: grafana-alloy
-version: 1.4.0
+version: 1.5.0
 type: application
 dependencies:
   - name: alloy
     version: ~1.4.0
     repository: "https://grafana.github.io/helm-charts"
     alias: app
+    condition: app.enabled
+  - name: alloy
+    version: ~1.4.0
+    repository: "https://grafana.github.io/helm-charts"
+    alias: logs
+    condition: logs.enabled
+  - name: alloy
+    version: ~1.4.0
+    repository: "https://grafana.github.io/helm-charts"
+    alias: metrics
+    condition: metrics.enabled
