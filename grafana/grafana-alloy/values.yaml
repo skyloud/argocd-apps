@@ -25,6 +25,8 @@ logs:
 
 metrics:
   enabled: false
+  crds:
+    create: false
   alloy:
     clustering:
       enabled: true
