@@ -46,6 +46,7 @@ consulted per file, so already-applied migrations are skipped.
 {{- $hasAppMigrations := ne .Values.migrationsCode.image.reference "" }}
 {{- $argocdHook := .Values.migrations.argocdHook }}
 {{- $vault := .Values.migrations.vaultBootstrap }}
+{{- $guc := .Values.migrations.gucBootstrap }}
 {{- /*
 Exact version strings of the builtin bootstrap files, read from the files
 themselves rather than pattern-matched, so the one-time backfill below can
@@ -151,6 +152,24 @@ spec:
                   key: {{ required "migrations.vaultBootstrap.extra[].key is required" $e.key | quote }}
             {{- end }}
             {{- end }}
+            {{- if and $guc.enabled $guc.supabaseKeys }}
+            - name: GUC_SUPABASE_URL
+              value: {{ .Values.kong.publicUrl | default (include "supabase.internalKongUrl" .) | quote }}
+            - name: GUC_SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: anonKey
+            {{- end }}
+            {{- if $guc.enabled }}
+            {{- range $i, $e := $guc.extra }}
+            - name: GUC_EXTRA_{{ $i }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "migrations.gucBootstrap.extra[].secretName is required" $e.secretName | quote }}
+                  key: {{ required "migrations.gucBootstrap.extra[].key is required" $e.key | quote }}
+            {{- end }}
+            {{- end }}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -225,6 +244,39 @@ spec:
                   echo "== applied $f"
                 done
               }
+
+              {{- if $guc.enabled }}
+              {{- /*
+              Posé AVANT les migrations, contrairement au bootstrap Vault plus
+              bas : `ALTER DATABASE ... SET` ne change rien à la session en
+              cours, mais apply_dir lance un psql par fichier, donc une
+              session neuve qui voit le réglage. Une migration peut ainsi lire
+              la valeur au moment où elle s'applique — ce qui compte pour du
+              SQL migré de Cloud qui génère une valeur aléatoire quand il n'en
+              trouve aucune.
+
+              Le NOM du paramètre vient du chart (littéral rendu par Helm), sa
+              VALEUR passe par :'gval' pour que psql produise un littéral
+              correctement échappé : ni le nom ni la valeur ne transitent par
+              la ligne de commande. Rejoué à chaque sync, idempotent.
+              */}}
+              guc_put() {
+                if [ -z "${2:-}" ]; then
+                  echo "== database GUC $1 skipped (empty value)" >&2
+                  return 0
+                fi
+                printf '%s\n' "ALTER DATABASE \"$PGDATABASE\" SET $1 = :'gval';" \
+                  | psql_exec -v gval="$2" -f - >/dev/null
+                echo "== database GUC $1 set"
+              }
+              {{- if $guc.supabaseKeys }}
+              guc_put app.supabase_url "$GUC_SUPABASE_URL"
+              guc_put app.supabase_anon_key "$GUC_SUPABASE_ANON_KEY"
+              {{- end }}
+              {{- range $i, $e := $guc.extra }}
+              guc_put {{ required "migrations.gucBootstrap.extra[].name is required" $e.name | quote }} "$GUC_EXTRA_{{ $i }}"
+              {{- end }}
+              {{- end }}
 
               {{- if $builtinInit }}
               apply_dir "$SUPABASE_INIT_DIR" supabase_migrations.chart_bootstrap

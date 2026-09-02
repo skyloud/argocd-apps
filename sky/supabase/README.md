@@ -206,6 +206,18 @@ The chart consumes a CLI-shaped project as-is (`supabase/migrations/*.sql`,
    `migrations.vaultBootstrap` to have the chart upsert `SUPABASE_URL`,
    `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` after migrations, plus
    any project-specific names via `vaultBootstrap.extra`.
+
+   When the Vault is not usable — a Postgres image that wires
+   `vault.getkey_script` from its own `postgresql.conf`, which CloudNativePG
+   ignores, leaves `vault.create_secret()` failing with `pgsodium_derive: no
+   server secret key defined` — `migrations.gucBootstrap` is the fallback: it
+   sets the same values as database-level settings
+   (`ALTER DATABASE ... SET app.supabase_url / app.supabase_anon_key`) *before*
+   migrations run, so a migration can read them while it applies. A setting is
+   not encrypted at rest and stays readable by any session, so keep this for
+   configuration values (public URL, anon/publishable key) and never a service
+   key. Watch out for precedence: the same name pinned with `ALTER ROLE` wins
+   over the database level.
 4. **Scheduled jobs.** `cron.schedule(...)` calls made through the Cloud
    dashboard aren't in your migrations either. Add them as a new migration now
    that pg_cron works — that's the only way they'll exist here.

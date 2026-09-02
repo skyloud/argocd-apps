@@ -431,6 +431,44 @@ migrations:
     #     secretName: supabase-jwt
     #     key: serviceKey
     extra: []
+  # -----------------------------------------------------------------------
+  # GUC bootstrap — off by default. Même besoin que vaultBootstrap ci-dessus,
+  # autre mécanisme : pose les valeurs comme paramètres de configuration de la
+  # BASE (`ALTER DATABASE ... SET`) au lieu de secrets Vault.
+  #
+  # À utiliser quand le Vault n'est pas exploitable — typiquement une image
+  # Postgres dont `vault.getkey_script` est câblé par son propre
+  # postgresql.conf, que CloudNativePG ignore : `vault.create_secret()` échoue
+  # alors en « pgsodium_derive: no server secret key defined » et tout SQL qui
+  # lit `vault.decrypted_secrets` repart les mains vides. Un GUC n'est pas
+  # chiffré au repos et reste lisible par toute session (`current_setting`,
+  # `pg_db_role_setting`) : ne l'utiliser que pour des valeurs de
+  # configuration, JAMAIS pour une clé de service. L'URL publique et la clé
+  # anon (« publishable ») qualifient ; une service key non.
+  #
+  # Contrairement à vaultBootstrap, ceci tourne AVANT les migrations : chaque
+  # fichier est appliqué par un nouveau processus psql, donc une nouvelle
+  # session, qui voit le réglage posé au niveau base. Une migration peut ainsi
+  # lire la valeur pendant qu'elle s'applique.
+  #
+  # ATTENTION : un même paramètre posé au niveau RÔLE (`ALTER ROLE ... SET`) a
+  # PRÉCÉDENCE sur le niveau base. Si un de ces noms est déjà épinglé sur
+  # `authenticator` / `authenticated` / `service_role`, ce bootstrap n'aura
+  # aucun effet visible — vérifier `pg_db_role_setting` avant de conclure.
+  gucBootstrap:
+    enabled: false
+    # Pose `app.supabase_url` (kong.publicUrl, ou l'URL Kong interne à défaut)
+    # et `app.supabase_anon_key` (Secret JWT du release). Ce sont les noms
+    # attendus par du SQL migré de Supabase Cloud qui doit continuer à appeler
+    # ses Edge Functions sans Vault.
+    supabaseKeys: true
+    # Paramètres additionnels, valeur lue dans une clé d'un Secret existant.
+    # Le nom doit être qualifié (`prefixe.nom`) : Postgres n'accepte un
+    # paramètre inconnu que sous cette forme.
+    #   - name: app.encryption_key
+    #     secretName: supabase-app-keys
+    #     key: encryptionKey
+    extra: []
   ttlSecondsAfterFinished: 86400
   # Keep retrying: on first install the pod may sit in
   # CreateContainerConfigError for a bit until the CNPG Cluster (applied in
