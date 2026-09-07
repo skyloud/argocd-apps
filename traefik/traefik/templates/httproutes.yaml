@@ -36,15 +36,13 @@ spec:
     {{- end }}
   rules:
     {{- range $rule := $route.rules }}
-    - {{- with $rule.matches }}
-      matches:
-        {{- range . }}
-        {{- if or .path .headers }}
-        - {{- with .path }}
-          path:
-            type: {{ default "PathPrefix" .type }}
-            value: {{ default "/" .value | quote }}
-          {{- end }}
+    - matches:
+        {{- if $rule.matches }}
+        {{- range $rule.matches }}
+        {{- $path := .path | default dict }}
+        - path:
+            type: {{ default "PathPrefix" (dig "type" "" $path) }}
+            value: {{ default "/" (dig "value" "" $path) | quote }}
           {{- with .headers }}
           headers:
             {{- range . }}
@@ -53,20 +51,21 @@ spec:
               value: {{ .value | quote }}
             {{- end }}
           {{- end }}
+        {{- end }}
         {{- else }}
-        - {}
+        - path:
+            type: PathPrefix
+            value: "/"
         {{- end }}
-        {{- end }}
-      {{- end }}
       backendRefs:
         {{- range $rule.backendRefs }}
-        - name: {{ .name }}
+        - group: ""
+          kind: Service
+          name: {{ .name }}
           port: {{ .port }}
+          weight: {{ if kindIs "invalid" .weight }}1{{ else }}{{ .weight }}{{ end }}
           {{- with .namespace }}
           namespace: {{ . }}
-          {{- end }}
-          {{- if not (kindIs "invalid" .weight) }}
-          weight: {{ .weight }}
           {{- end }}
         {{- end }}
     {{- end }}
