@@ -1,0 +1,40 @@
+{{- range $name, $tgb := $.Values.app.targetGroupBindings }}
+---
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ $tgb.namespace }}
+  labels:
+    {{- include "target-group-binding.labels" $ | nindent 4 }}
+spec:
+  targetGroupARN: {{ $tgb.targetGroupARN }}
+  targetType: {{ default "instance" $tgb.targetType }}
+  serviceRef:
+    name: {{ $tgb.serviceRef.name }}
+    port: {{ $tgb.serviceRef.port }}
+  {{- if $tgb.networking }}
+  networking:
+    ingress:
+    {{- range $rule := $tgb.networking.ingress }}
+    - from:
+      {{- range $peer := $rule.from }}
+      {{- if $peer.securityGroup }}
+      - securityGroup:
+          groupID: {{ $peer.securityGroup.groupID }}
+      {{- end }}
+      {{- if $peer.ipBlock }}
+      - ipBlock:
+          cidr: {{ $peer.ipBlock.cidr }}
+      {{- end }}
+      {{- end }}
+      ports:
+      {{- range $port := $rule.ports }}
+      - protocol: {{ default "TCP" $port.protocol }}
+        {{- if $port.port }}
+        port: {{ $port.port }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
