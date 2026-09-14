@@ -49,6 +49,12 @@ spec:
           kubernetes.io/cluster/{{ $.Values.app.settings.clusterName }}: owned
     {{- end }}
   role: {{ $nc.role }}
+  {{- if $nc.tags }}
+  tags:
+    {{- range $key, $value := $nc.tags }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
   amiSelectorTerms:
     {{- if $nc.amiSelectorTerms }}
     {{- range $index, $selector := $nc.amiSelectorTerms }}

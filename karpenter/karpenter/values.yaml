@@ -19,6 +19,8 @@ app:
     #       ebs:
     #         volumeSize: "20Gi"
     #         volumeType: "gp3"
+    #  tags:
+    #     "skyloud:env": "test"
 # AWS node pools example:
   nodePools:
     # default:
