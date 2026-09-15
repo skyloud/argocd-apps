@@ -152,6 +152,39 @@ data:
         importMapPath = SHARED_IMPORT_MAP
       }
 
+      // Le worker herite des variables d'environnement du service principal,
+      // mais PAS de ses droits d'acces disque : son bac a sable est limite a
+      // servicePath. AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE lui arrive donc
+      // avec un chemin qu'il ne peut pas lire, et toute resolution de
+      // credentials EKS Pod Identity echoue en « path not found » — alors que
+      // le fichier existe et est parfaitement lisible depuis le conteneur.
+      //
+      // Le service principal, lui, a les droits. Il lit le jeton et le passe
+      // en VALEUR via AWS_CONTAINER_AUTHORIZATION_TOKEN, la variable standard
+      // du fournisseur de credentials conteneur d'AWS, acceptee a la place du
+      // fichier par les SDK comme par _shared/aws-config.ts.
+      //
+      // Relu a CHAQUE creation de worker et jamais mis en cache : le jeton
+      // projete par EKS est renouvele periodiquement, et une copie gardee en
+      // memoire expirerait en silence — panne intermittente, des heures apres
+      // le deploiement.
+      //
+      // Ne jamais journaliser la valeur lue.
+      async function awsContainerAuthEnv(): Promise<[string, string][]> {
+        const tokenFile = Deno.env.get('AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE')
+        if (!tokenFile) return []
+        try {
+          const token = (await Deno.readTextFile(tokenFile)).trim()
+          return token ? [['AWS_CONTAINER_AUTHORIZATION_TOKEN', token]] : []
+        } catch (e) {
+          // Ne fait PAS echouer la requete : une fonction qui n'appelle aucun
+          // service AWS doit continuer de repondre. Celles qui en ont besoin
+          // leveront leur propre erreur, explicite.
+          console.error('jeton Pod Identity illisible:', String(e))
+          return []
+        }
+      }
+
       try {
         const worker = await EdgeRuntime.userWorkers.create({
           servicePath,
@@ -159,7 +192,10 @@ data:
           workerTimeoutMs: {{ .Values.functions.workerTimeoutMs }},
           noModuleCache: false,
           importMapPath,
-          envVars: Object.entries(Deno.env.toObject()),
+          envVars: [
+            ...Object.entries(Deno.env.toObject()),
+            ...(await awsContainerAuthEnv()),
+          ],
         })
         return await worker.fetch(req)
       } catch (e) {
