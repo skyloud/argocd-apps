@@ -56,10 +56,25 @@ spec:
       {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.rest.podAnnotations }}
       annotations:
+        # FILET DE SECURITE — le cache de schema de PostgREST est construit au
+        # DEMARRAGE du processus. Il ne se recharge ensuite que sur un
+        # `NOTIFY pgrst`, mecanisme qui a ete inoperant un mois sur ce cluster
+        # (session en lecture seule via le pooler). Resultat : un cache fige
+        # sur un schema quasi vide, et TOUTES les ecritures REST en 404 — sans
+        # la moindre erreur cote lecture, donc sans que rien ne le signale.
+        #
+        # Cette empreinte lie le pod a la reference de l'image de migrations :
+        # toute nouvelle migration change le tag, donc l'empreinte, donc
+        # declenche un rollout et un cache reconstruit. Meme mecanique que le
+        # `checksum/main` du deploiement des functions.
+        #
+        # Volontairement conserve meme apres correction du canal NOTIFY : il
+        # rend le resultat sur quel que soit le comportement du pooler.
+        checksum/migrations: {{ .Values.migrationsCode.image.reference | default "" | sha256sum | trunc 16 | quote }}
+        {{- with .Values.rest.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
     spec:
