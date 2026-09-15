@@ -6,44 +6,80 @@ spec:
   groups:
     - name: velero
       rules:
+        - alert: NoVeleroMetrics
+          expr: absent(velero_backup_total) > 0
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "anonymous"
+            env: "unknown"
+            summary: No Velero metrics
+            description: "velero_backup_total is absent: the Velero server metrics endpoint is not scraped anymore, every backup alert of this pack is blind and a total backup outage would go unnoticed."
+
         - alert: NoScheduledBackupIn25h
-          expr: time() - velero_backup_last_successful_timestamp{schedule=~".*daily.*"} > 3600*25
+          expr: time() - velero_backup_last_successful_timestamp{schedule=~".*daily.*"} > 3600 * 25
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: No scheduled backup in 25h for {{ $labels.schedule }}
+            summary: No successful daily backup in 25h for schedule {{ $labels.schedule }}
+            description: "Last successful backup of schedule {{ $labels.schedule }} was {{ $value | humanizeDuration }} ago, the daily window of 25h is exceeded."
 
         - alert: NoScheduledBackupIn3h
-          expr: time() - velero_backup_last_successful_timestamp{schedule=~".*hourly.*"} > 3600*3
+          expr: time() - velero_backup_last_successful_timestamp{schedule=~".*hourly.*"} > 3600 * 3
           labels:
             alertowner: skyloud
-            severity: high
+            severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: No scheduled backup in 3h for {{ $labels.schedule }}
+            summary: No successful hourly backup in 3h for schedule {{ $labels.schedule }}
+            description: "Last successful backup of schedule {{ $labels.schedule }} was {{ $value | humanizeDuration }} ago, three hourly runs in a row have been missed."
+
+        - alert: VeleroScheduleNeverSucceeded
+          expr: |
+            velero_backup_attempt_total{schedule!=""} > 0
+            unless on (schedule)
+            velero_backup_last_successful_timestamp
+          for: 1h
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: Velero schedule {{ $labels.schedule }} has never produced a successful backup
+            description: "Schedule {{ $labels.schedule }} has {{ $value | printf \"%.0f\" }} backup attempts but no velero_backup_last_successful_timestamp series, so the NoScheduledBackupIn3h/25h rules cannot fire for it: there is no restore point at all."
 
         - alert: VeleroBackupTakesMoreThan1h
-          expr: sum(increase(velero_backup_duration_seconds_sum[1h])) by (schedule) > 3600
+          expr: |
+            increase(velero_backup_duration_seconds_sum{schedule!=""}[6h])
+            /
+            increase(velero_backup_duration_seconds_count{schedule!=""}[6h])
+            > 3600
+          for: 5m
           labels:
             alertowner: skyloud
             severity: medium
-          for: 5m
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Velero backup takes more than 1h for {{ $labels.namespace }}/{{ $labels.schedule }}
+            summary: Velero backups of schedule {{ $labels.schedule }} take more than 1h
+            description: "Average duration of the backups of schedule {{ $labels.schedule }} completed in the last 6h is {{ $value | humanizeDuration }}, above the 1h budget."
 
         - alert: VeleroBackupFailed
-          expr: sum(increase(velero_backup_failure_total[15m])) by (schedule) > 0
+          expr: increase(velero_backup_failure_total{schedule!=""}[1h]) > 0
+          for: 5m
+          keep_firing_for: 12h
           labels:
             alertowner: skyloud
             severity: critical
-          for: 5m
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Velero backup failed for {{ $labels.namespace }}/{{ $labels.schedule }}
+            summary: Velero backup failed for schedule {{ $labels.schedule }}
+            description: "{{ $value | printf \"%.0f\" }} backup failure(s) recorded in the last hour for schedule {{ $labels.schedule }}. The alert is held open for 12h so the failure cannot silently disappear when the counter window slides."

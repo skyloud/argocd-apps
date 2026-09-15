@@ -6,108 +6,37 @@ spec:
   groups:
     - name: rabbitmq
       rules:
-        - alert: RabbitmqNodeDown
-          expr: 'sum(rabbitmq_build_info) < 1'
-          for: 0m
-          labels:
-            alertowner: skyloud
-            severity: critical
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ node down (instance {{ $labels.instance }})"
-            description: "Less than 1 node running in RabbitMQ cluster\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqInstancesDifferentVersions
-          expr: 'count(count(rabbitmq_build_info) by (rabbitmq_version, namespace)) > 1'
-          for: 1h
-          labels:
-            alertowner: skyloud
-            severity: medium
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ instances running different versions"
-            description: "Running different versions of RabbitMQ in the same cluster can lead to failure.\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqMemoryHigh
-          expr: 'rabbitmq_process_resident_memory_bytes / rabbitmq_resident_memory_limit_bytes * 100 > 90'
-          for: 2m
-          labels:
-            alertowner: skyloud
-            severity: critical
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ memory high (instance {{ $labels.instance }})"
-            description: "A node uses more than 90% of allocated RAM\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqFileDescriptorsUsage
-          expr: 'rabbitmq_process_open_fds / rabbitmq_process_max_fds * 100 > 90'
-          for: 2m
-          labels:
-            alertowner: skyloud
-            severity: critical
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ file descriptors usage high (instance {{ $labels.instance }})"
-            description: "A node uses more than 90% of file descriptors\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqTooManyUnackMessages
-          expr: 'sum(rabbitmq_queue_messages_unacked) BY (queue, namespace) > 1000'
-          for: 1m
-          labels:
-            alertowner: skyloud
-            severity: high
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ too many unack messages (queue {{ $labels.queue }})"
-            description: "Too many unacknowledged messages\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqTooManyConnections
-          expr: 'rabbitmq_connections > 10000'
-          for: 2m
-          labels:
-            alertowner: skyloud
-            severity: high
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ too many connections (instance {{ $labels.instance }})"
-            description: "The total connections of a node is too high\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqNoQueueConsumer
-          expr: 'rabbitmq_queue_consumers < 1'
-          for: 1m
-          labels:
-            alertowner: skyloud
-            severity: high
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ no queue consumer (queue {{ $labels.queue }})"
-            description: "A queue has less than 1 consumer\n  VALUE = {{ $value }}"
-
-        - alert: RabbitmqUnroutableMessages
-          expr: 'increase(rabbitmq_channel_messages_unroutable_returned_total[1m]) > 0 or increase(rabbitmq_channel_messages_unroutable_dropped_total[1m]) > 0'
-          for: 2m
-          labels:
-            alertowner: skyloud
-            severity: critical
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "RabbitMQ unroutable messages (instance {{ $labels.instance }})"
-            description: "A queue has unroutable messages\n  VALUE = {{ $value }}"
-
-        - alert: HighPendingMessages
+        - alert: RabbitmqExporterAbsent
           expr: |
-            sum by (queue, namespace) (
-              rabbitmq_queue_messages_ready +
-              rabbitmq_queue_messages_unacked
-            ) > 50
+            absent(rabbitmq_build_info) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: No RabbitMQ metrics available
+            description: 'rabbitmq_build_info is absent: the RabbitMQ cluster is down, undeployed, or its ServiceMonitor is no longer discovered. Every RabbitMQ alert of this pack is blind.'
+
+        - alert: RabbitmqNodeDown
+          expr: |
+            count by (namespace, service) (rabbitmq_build_info)
+            <
+            max_over_time((count by (namespace, service) (rabbitmq_build_info))[3h:5m])
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ cluster lost a node in {{ $labels.namespace }}/{{ $labels.service }}
+            description: '{{ printf "%.0f" $value }} node(s) reporting, below the maximum observed over the last 3h. A node is down or was removed from the cluster.'
+
+        - alert: RabbitmqMemoryAlarm
+          expr: |
+            max by (namespace, pod) (rabbitmq_alarms_memory_used_watermark) == 1
           for: 5m
           labels:
             alertowner: skyloud
@@ -115,5 +44,144 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "High number of pending messages (queue {{ $labels.queue }})"
-            description: "More than 50 pending messages in RabbitMQ queue for more than 5 minutes"
+            summary: RabbitMQ memory alarm active on {{ $labels.namespace }}/{{ $labels.pod }}
+            description: 'The node crossed its memory high watermark: RabbitMQ is blocking publishers until memory is released.'
+
+        - alert: RabbitmqDiskAlarm
+          expr: |
+            max by (namespace, pod) (rabbitmq_alarms_free_disk_space_watermark) == 1
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ free disk space alarm active on {{ $labels.namespace }}/{{ $labels.pod }}
+            description: 'Free disk space dropped below the configured limit: RabbitMQ is blocking publishers until space is reclaimed.'
+
+        - alert: RabbitmqMemoryHigh
+          expr: |
+            rabbitmq_process_resident_memory_bytes / (rabbitmq_resident_memory_limit_bytes > 0) > 0.9
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ memory usage close to watermark on {{ $labels.namespace }}/{{ $labels.pod }}
+            description: 'Node is using {{ $value | humanizePercentage }} of its memory high watermark for more than 15 minutes. Crossing 100% blocks publishers.'
+
+        - alert: RabbitmqFileDescriptorsUsage
+          expr: |
+            rabbitmq_process_open_fds / (rabbitmq_process_max_fds > 0) > 0.9
+          for: 10m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ file descriptors usage high on {{ $labels.namespace }}/{{ $labels.pod }}
+            description: 'Node is using {{ $value | humanizePercentage }} of its file descriptor limit. Exhaustion refuses every new connection and channel.'
+
+        - alert: RabbitmqTooManyConnections
+          expr: |
+            max by (namespace, pod) (rabbitmq_connections) > 5000
+          for: 10m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ too many connections on {{ $labels.namespace }}/{{ $labels.pod }}
+            description: '{{ printf "%.0f" $value }} open connections on this node for more than 10 minutes. Check for a client that does not pool or close its connections.'
+
+        - alert: RabbitmqTooManyUnackMessages
+          expr: |
+            max by (namespace, vhost, queue) (rabbitmq_queue_messages_unacked) > 1000
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ too many unacknowledged messages on {{ $labels.namespace }} {{ $labels.vhost }}/{{ $labels.queue }}
+            description: '{{ printf "%.0f" $value }} messages delivered but never acknowledged for more than 15 minutes. A consumer is stuck or its prefetch is too large.'
+
+        - alert: RabbitmqNoQueueConsumer
+          expr: |
+            (
+              max by (namespace, vhost, queue) (rabbitmq_queue_consumers{queue!~"amq\\.gen-.*"}) == 0
+            )
+            and
+            (
+              max by (namespace, vhost, queue) (rabbitmq_queue_messages_ready{queue!~"amq\\.gen-.*"}) > 0
+            )
+          for: 30m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ queue without consumer on {{ $labels.namespace }} {{ $labels.vhost }}/{{ $labels.queue }}
+            description: 'Queue has no consumer while messages are waiting to be delivered, for more than 30 minutes. Idle queues and server-generated queues (amq.gen-*) are excluded.'
+
+        - alert: RabbitmqUnroutableMessages
+          expr: |
+            sum by (namespace, pod) (
+              increase(rabbitmq_channel_messages_unroutable_returned_total[15m])
+              + increase(rabbitmq_channel_messages_unroutable_dropped_total[15m])
+            ) > 10
+          for: 0m
+          keep_firing_for: 2h
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ unroutable messages on {{ $labels.namespace }}/{{ $labels.pod }}
+            description: '{{ printf "%.0f" $value }} messages published to an exchange with no matching binding over the last 15 minutes. Dropped messages are lost silently: check exchange bindings and routing keys.'
+
+        - alert: HighPendingMessages
+          expr: |
+            (
+              max by (namespace, vhost, queue) (
+                rabbitmq_queue_messages_ready + rabbitmq_queue_messages_unacked
+              ) > 1000
+            )
+            and
+            (
+              max by (namespace, vhost, queue) (
+                delta((rabbitmq_queue_messages_ready + rabbitmq_queue_messages_unacked)[30m:5m])
+              ) > 0
+            )
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ backlog growing on {{ $labels.namespace }} {{ $labels.vhost }}/{{ $labels.queue }}
+            description: '{{ printf "%.0f" $value }} messages pending and the backlog has grown over the last 30 minutes. Consumers are not keeping up with producers.'
+
+        - alert: RabbitmqInstancesDifferentVersions
+          expr: |
+            count by (namespace, service) (
+              count by (namespace, service, rabbitmq_version) (rabbitmq_build_info)
+            ) > 1
+          for: 1h
+          labels:
+            alertowner: skyloud
+            severity: medium
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: RabbitMQ version skew in {{ $labels.namespace }}/{{ $labels.service }}
+            description: '{{ printf "%.0f" $value }} distinct RabbitMQ versions in the same cluster for more than 1 hour. A rolling upgrade is stuck or a node failed to restart.'

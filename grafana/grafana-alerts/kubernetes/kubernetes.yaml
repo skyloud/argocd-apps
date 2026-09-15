@@ -8,7 +8,7 @@ spec:
       rules:
         - alert: KubeVersionMismatch
           expr: |
-            count(count by (gitVersion) (label_replace(kubernetes_build_info{job!~"kube-dns|coredns"},"gitVersion","$1","gitVersion","(v[0-9]+.[0-9]+).[0-9]+"))) > 1
+            count(count by (gitVersion) (label_replace(kubernetes_build_info{job="prometheus.scrape.kubelet"},"gitVersion","$1","gitVersion","(v[0-9]+\\.[0-9]+)\\.[0-9]+"))) > 1
           for: 4h
           labels:
             alertowner: skyloud
@@ -16,8 +16,9 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Different semantic versions of Kubernetes components running
-    # Requires kube-state-metrics
+            summary: Different minor versions of Kubernetes running across kubelets
+            description: '{{ $value }} distinct kubelet minor versions detected across the cluster nodes.'
+
     - name: kubernetes-nodes
       rules:
         - alert: KubernetesNodeNotReady
@@ -29,32 +30,36 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Node {{ $labels.node }} is not ready
+            summary: Node {{ $labels.node }} is not Ready
+            description: 'Node {{ $labels.node }} has had condition Ready != true for more than 15 minutes.'
 
         - alert: KubernetesNodeDiskPressure
           expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
-          for: 1m
+          for: 5m
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Node {{ $labels.instance }} is DiskPressure
+            summary: Node {{ $labels.node }} is under DiskPressure
+            description: 'The kubelet on node {{ $labels.node }} reports DiskPressure, pod eviction is imminent.'
 
         - alert: KubernetesNodeMemoryPressure
           expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
-          for: 1m
+          for: 5m
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Node {{ $labels.instance }} is MemoryPressure
+            summary: Node {{ $labels.node }} is under MemoryPressure
+            description: 'The kubelet on node {{ $labels.node }} reports MemoryPressure, pod eviction is imminent.'
 
         - alert: HostHighCPUUsage
-          expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle",job="node-exporter"}[5m])) * 100) > 80
+          expr: |
+            100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle",job="node-exporter"}[5m])) * 100) > 80
           for: 15m
           labels:
             alertowner: skyloud
@@ -62,11 +67,12 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+            summary: High CPU usage on {{ $labels.instance }}
+            description: 'CPU usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }} (threshold 80%, sustained 15m).'
 
         - alert: HostHighMemoryUsage
           expr: |
-            100*(1-node_memory_MemAvailable_bytes{job="node-exporter"}/node_memory_MemTotal_bytes{job="node-exporter"}) > 80
+            100 * (1 - node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"}) > 80
           for: 15m
           labels:
             alertowner: skyloud
@@ -74,12 +80,12 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "RAM usage is {{ $value }}% on {{ $labels.instance }}"
+            summary: High memory usage on {{ $labels.instance }}
+            description: 'RAM usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }} (threshold 80%, sustained 15m).'
 
-        # Normally there is no swap on kubernetes nodes
         - alert: NodeHighSwapUsage
           expr: |
-            sum(100 * ((node_memory_SwapTotal_bytes{job="node-exporter"} - node_memory_SwapFree_bytes{job="node-exporter"}) / (node_memory_SwapTotal_bytes{job="node-exporter"}))) by (instance) > 80
+            100 * (node_memory_SwapTotal_bytes{job="node-exporter"} - node_memory_SwapFree_bytes{job="node-exporter"}) / (node_memory_SwapTotal_bytes{job="node-exporter"} > 0) > 80
           for: 15m
           labels:
             alertowner: skyloud
@@ -87,11 +93,13 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "SWAP usage is {{ $value }}% on {{ $labels.instance }}"
+            summary: High swap usage on {{ $labels.instance }}
+            description: 'Swap usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }}. Kubernetes nodes are normally swapless.'
 
         - alert: HostHighDiskUsage
           expr: |
-            (100 - 100 * node_filesystem_avail_bytes{mountpoint="/etc/hostname",job="node-exporter"} / node_filesystem_size_bytes{mountpoint="/etc/hostname",job="node-exporter"}) > 80 and ON (instance, device) node_filesystem_readonly{mountpoint="/etc/hostname",job="node-exporter"} == 0
+            (100 - 100 * node_filesystem_avail_bytes{mountpoint="/etc/hostname",job="node-exporter"} / node_filesystem_size_bytes{mountpoint="/etc/hostname",job="node-exporter"}) > 80
+            and on (instance, device, mountpoint) node_filesystem_readonly{mountpoint="/etc/hostname",job="node-exporter"} == 0
           for: 15m
           labels:
             alertowner: skyloud
@@ -99,12 +107,19 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "Disk usage is {{ $value }}% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+            summary: Node root filesystem almost full on {{ $labels.instance }}
+            description: 'Root filesystem ({{ $labels.device }}) usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }} (threshold 80%).'
 
-        # Check all mountpoints except rootfs
         - alert: HostHighDiskUsageExternal
           expr: |
-            (100 - 100 * node_filesystem_avail_bytes{device!="/dev/root",job="node-exporter"} / node_filesystem_size_bytes{device!="/dev/root",job="node-exporter"}) > 80 and ON (instance, mountpoint) node_filesystem_readonly{device!="/dev/root",job="node-exporter"} == 0
+            (
+              100 - 100 * node_filesystem_avail_bytes{job="node-exporter",fstype=~"ext2|ext3|ext4|xfs|btrfs|zfs"}
+              / node_filesystem_size_bytes{job="node-exporter",fstype=~"ext2|ext3|ext4|xfs|btrfs|zfs"}
+            ) > 80
+            unless on (instance, device)
+            node_filesystem_size_bytes{job="node-exporter",mountpoint="/etc/hostname"}
+            and on (instance, device, mountpoint)
+            node_filesystem_readonly{job="node-exporter"} == 0
           for: 15m
           labels:
             alertowner: skyloud
@@ -112,30 +127,33 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "Disk usage is {{ $value }}% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+            summary: Data volume {{ $labels.mountpoint }} almost full on {{ $labels.instance }}
+            description: 'Data volume {{ $labels.mountpoint }} ({{ $labels.device }}, {{ $labels.fstype }}) usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }} (threshold 80%). This device differs from the node root filesystem, already covered by HostHighDiskUsage.'
 
         - alert: HostOOMKill
           expr: increase(node_vmstat_oom_kill{job="node-exporter"}[15m]) > 0
+          keep_firing_for: 2h
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "{{ $value }} OOM killed processes on {{ $labels.instance }}"
+            summary: Kernel OOM killer triggered on {{ $labels.instance }}
+            description: '{{ printf "%.0f" $value }} process(es) OOM-killed by the kernel on {{ $labels.instance }} in the last 15 minutes.'
 
         - alert: NodeClockSkewDetected
           expr: |
             (
               node_timex_offset_seconds{job="node-exporter"} > 0.05
             and
-              deriv(node_timex_offset_seconds{job="node-exporter"}[5m]) >= 0
+              deriv(node_timex_offset_seconds{job="node-exporter"}[10m]) >= 0
             )
             or
             (
               node_timex_offset_seconds{job="node-exporter"} < -0.05
             and
-              deriv(node_timex_offset_seconds{job="node-exporter"}[5m]) <= 0
+              deriv(node_timex_offset_seconds{job="node-exporter"}[10m]) <= 0
             )
           for: 10m
           labels:
@@ -144,34 +162,38 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "Clock skew detected on {{ $labels.instance }}"
+            summary: Clock skew detected on {{ $labels.instance }}
+            description: 'NTP offset is {{ printf "%.3f" $value }}s on {{ $labels.instance }} and drifting away from zero.'
 
     - name: kubernetes-pods
       rules:
         - alert: NoPodMetrics
-          expr: absent(kube_pod_container_status_restarts_total) > 0
-          for: 5m
+          expr: |
+            absent(kube_pod_container_status_restarts_total) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
+          for: 15m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
-            tenant_id: "anonymous"
-            env: "unknown"
-            summary: No pod metrics in the cluster. You probably don't have kube-state-metrics deployed.
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: No kube-state-metrics pod metrics available
+            description: 'kube_pod_container_status_restarts_total is absent: kube-state-metrics is not deployed, or its Service is not scraped (missing prometheus.io/scrape annotation, or its namespace listed in scrape_exclude_namespaces). Every pod-level alert of this pack is blind.'
 
         - alert: PodRestartedAtLeastOneTimeOver10m
           expr: |
-            increase(kube_pod_container_status_restarts_total[10m]) > 0
-            unless on(namespace, pod)
+            increase(kube_pod_container_status_restarts_total[15m]) > 2
+            unless on(namespace, pod, container)
             (kube_pod_container_status_last_terminated_reason{reason="Completed"} == 1)
-          for: 1m
+          for: 10m
           labels:
             alertowner: skyloud
-            severity: critical
+            severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} restarted at least one time in 10 mins
+            summary: Container {{ $labels.container }} restarting in {{ $labels.namespace }}/{{ $labels.pod }}
+            description: '{{ printf "%.0f" $value }} restarts in the last 15 minutes for container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} (threshold > 2, normal Job completions excluded).'
 
         - alert: PodNotReady15m
           expr: |
@@ -184,7 +206,8 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready for 5 mins
+            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} not ready
+            description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} is Running but has not been Ready for more than 15 minutes.'
 
         - alert: PodBadPhase15m
           expr: |
@@ -196,38 +219,43 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} is phase={{ $labels.phase }} for 15 mins
+            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} is in phase {{ $labels.phase }}
+            description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in phase {{ $labels.phase }} for more than 15 minutes.'
 
         - alert: PodWaiting15m
           expr: |
             kube_pod_container_status_waiting_reason > 0
-          for: 5m
+          for: 15m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} waiting for 15 mins on {{ $labels.reason }}
+            summary: Container {{ $labels.container }} waiting in {{ $labels.namespace }}/{{ $labels.pod }}
+            description: 'Container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} has been waiting for 15 minutes with reason {{ $labels.reason }}.'
 
         - alert: PodOOMkilledOneTime10m
           expr: |
-            kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1 
-            and on(exported_container)
-            increase(kube_pod_container_status_restarts_total[10m]) > 1
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+            and on(namespace, pod, container)
+            increase(kube_pod_container_status_restarts_total[15m]) > 0
+          keep_firing_for: 2h
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} exited with '{{ $labels.reason }}'
+            summary: Container {{ $labels.container }} OOMKilled in {{ $labels.namespace }}/{{ $labels.pod }}
+            description: 'Container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} was terminated with OOMKilled and restarted in the last 15 minutes. Review its memory limit.'
 
         - alert: PodEvicted
           expr: |
-            kube_pod_container_status_last_terminated_reason{reason="Evicted"} == 1 
-            and on(container) increase(kube_pod_container_status_restarts_total[10m]) > 0
-            and on(pod, namespace) kube_pod_info{priority_class!="overprovisioning"}
+            kube_pod_status_reason{reason="Evicted"} == 1
+            unless on(namespace, pod)
+            (kube_pod_info{priority_class="overprovisioning"} == 1)
+          keep_firing_for: 2h
           labels:
             alertowner: skyloud
             severity: high
@@ -235,3 +263,4 @@ spec:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: Pod {{ $labels.namespace }}/{{ $labels.pod }} was evicted
+            description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} was evicted by the kubelet, usually from node resource pressure.'

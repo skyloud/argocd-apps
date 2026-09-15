@@ -6,89 +6,141 @@ spec:
   groups:
     - name: nginx
       rules:
-        - alert: TlsCertExpireIn10d
+        - alert: NginxIngressMetricsAbsent
           expr: |
-            avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()
-            < 86400 * 7
+            absent_over_time(nginx_ingress_controller_requests[15m])
+          for: 5m
+          keep_firing_for: 30m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "TLS certificate expires in less than 7 days for {{ $labels.host }}"
+            summary: "No nginx ingress controller metric collected"
+            description: "nginx_ingress_controller_requests has been absent for 15m: every alert of the nginx pack is blind. Check the ingress-nginx pods and their ServiceMonitor."
+
+        - alert: TlsCertExpireIn10d
+          expr: |
+            min by (host, env, tenant_id) (
+              nginx_ingress_controller_ssl_expire_time_seconds{host!="_"}
+            ) - time() < 86400 * 10
+          for: 15m
+          keep_firing_for: 1h
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "TLS certificate expires in less than 10 days for host {{ $labels.host }}"
+            description: "The TLS certificate served by ingress-nginx for host {{ $labels.host }} expires in {{ $value | humanizeDuration }} (threshold 10d). Check the corresponding Certificate/Secret in the ingress namespace."
 
         - alert: MoreThanFive5xxIn10Mins
           expr: |
             (
-              sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)
+              sum by (ingress, exported_namespace, env, tenant_id) (
+                increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.."}[10m])
+              )
               > 25
             )
             and
             (
-              sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)
-              > 3 * avg_over_time(sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.*"}[10m])) by (ingress)[1h:10m])
+              sum by (ingress, exported_namespace, env, tenant_id) (
+                increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.."}[10m])
+              )
+              > 3 *
+              avg_over_time(
+                (
+                  sum by (ingress, exported_namespace, env, tenant_id) (
+                    increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.."}[10m])
+                  )
+                )[1h:10m] offset 10m
+              )
             )
-          for: 2m
+          for: 5m
+          keep_firing_for: 30m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "HTTP 5xx burst on ingress {{ $labels.exported_namespace }}/{{ $labels.ingress }}"
+            description: '{{ $value | printf "%.0f" }} HTTP 5xx in the last 10m (threshold 25), more than 3x the average of the previous hour.'
+
+        - alert: HighErrorRate5xx
+          expr: |
+            (
+              sum by (ingress, exported_namespace, env, tenant_id) (
+                rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.."}[5m])
+              )
+              /
+              sum by (ingress, exported_namespace, env, tenant_id) (
+                rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[5m])
+              )
+              > 0.05
+            )
+            and
+            (
+              sum by (ingress, exported_namespace, env, tenant_id) (
+                rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[5m])
+              )
+              > 0.05
+            )
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "High HTTP 5xx error rate on ingress {{ $labels.exported_namespace }}/{{ $labels.ingress }}"
+            description: "{{ $value | humanizePercentage }} of the requests answered 5xx over the last 5m (threshold 5%, sustained 5m, traffic above 3 req/min)."
+
+        - alert: HighErrorCount401
+          expr: |
+            sum by (ingress, exported_namespace, env, tenant_id) (
+              increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="401"}[10m])
+            )
+            > 1000
+          for: 5m
+          keep_firing_for: 15m
           labels:
             alertowner: skyloud
             severity: medium
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "{{ $value }} HTTP 5xx in 10mins for {{ $labels.ingress }} (3x higher than usual)"
-
-        - alert: HighErrorRate5xx
-          expr: |
-            sum(rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status!~"5.*"}[2m])) by (ingress)
-            /
-            sum(rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[2m])) by (ingress)
-            < 0.95
-          for: 2m
-          labels:
-            alertowner: skyloud
-            severity: high
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: High error rate 5xx for {{ $labels.ingress }} (success {{ $value }}% < 95%)
-
-        - alert: HighErrorCount401
-          expr: |
-            sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="401"}[10m])) by (ingress)
-            > 1000
-          for: 2m
-          labels:
-            alertowner: skyloud
-            severity: high
-          annotations:
-            tenant_id: "{{ $labels.tenant_id }}"
-            env: "{{ $labels.env }}"
-            summary: "{{ $value }} HTTP 401 in 10m for {{ $labels.ingress }}"
+            summary: "High HTTP 401 count on ingress {{ $labels.exported_namespace }}/{{ $labels.ingress }}"
+            description: '{{ $value | printf "%.0f" }} HTTP 401 in the last 10m (threshold 1000).'
 
         - alert: HighErrorCount403
           expr: |
-            sum(increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="403"}[10m])) by (ingress)
+            sum by (ingress, exported_namespace, env, tenant_id) (
+              increase(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status="403"}[10m])
+            )
             > 100
-          for: 2m
+          for: 5m
+          keep_firing_for: 15m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "{{ $value }} HTTP 403 in 10m for {{ $labels.ingress }}"
+            summary: "High HTTP 403 count on ingress {{ $labels.exported_namespace }}/{{ $labels.ingress }}"
+            description: '{{ $value | printf "%.0f" }} HTTP 403 in the last 10m (threshold 100).'
 
         - alert: HighLatency90p20s
           expr: |
             histogram_quantile(
               0.9,
-              sum(
+              sum by (le, ingress, exported_namespace, env, tenant_id) (
                 rate(
-                  nginx_ingress_controller_response_duration_seconds_bucket[5m]
+                  nginx_ingress_controller_request_duration_seconds_bucket{controller_class="k8s.io/ingress-nginx"}[5m]
                 )
               )
-              by (le, ingress)
             ) > 20
           for: 5m
           labels:
@@ -97,4 +149,5 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "Latency P90 is {{ $value }}s for {{ $labels.ingress }}"
+            summary: "P90 latency above 20s on ingress {{ $labels.exported_namespace }}/{{ $labels.ingress }}"
+            description: 'P90 request duration is {{ $value | printf "%.1f" }}s over the last 5m (threshold 20s).'

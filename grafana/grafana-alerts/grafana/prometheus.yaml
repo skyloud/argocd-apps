@@ -6,19 +6,39 @@ spec:
   groups:
   - name: prometheus
     rules:
-    - alert: PrometheusTargetMissing
-      expr: up == 0
-      for: 5m
+    - alert: PrometheusTargetMissingWarning
+      expr: |
+        up{job!~"prometheus\\.scrape\\.(cadvisor|kubelet)|node-exporter|coredns"} == 0
+        and count_over_time(up{job!~"prometheus\\.scrape\\.(cadvisor|kubelet)|node-exporter|coredns"}[15m]) >= 5
+      for: 15m
       labels:
         alertowner: skyloud
         severity: high
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
         env: "{{ $labels.env }}"
-        summary: Target {{ $labels.service }} for pod {{ $labels.exported_pod }} down
+        summary: "Scrape target {{ $labels.instance }} of job {{ $labels.job }} is down"
+        description: "Alloy has been failing to scrape {{ $labels.instance }} (job {{ $labels.job }}, namespace {{ $labels.namespace }}, service {{ $labels.service }}, pod {{ $labels.pod }}) for more than 15 minutes. Targets scraped less than 5 times over the last 15 minutes are excluded to avoid short-lived pods."
 
-    - alert: PrometheusTargetMissing
-      expr: up == 0
+    - alert: PrometheusTargetMissingCritical
+      expr: |
+        up{job=~"prometheus\\.scrape\\.(cadvisor|kubelet)|node-exporter|coredns"} == 0
+        and count_over_time(up{job=~"prometheus\\.scrape\\.(cadvisor|kubelet)|node-exporter|coredns"}[15m]) >= 5
+      for: 10m
+      labels:
+        alertowner: skyloud
+        severity: critical
+      annotations:
+        tenant_id: "{{ $labels.tenant_id }}"
+        env: "{{ $labels.env }}"
+        summary: "Platform scrape target {{ $labels.instance }} of job {{ $labels.job }} is down"
+        description: "Core collection job {{ $labels.job }} has been failing on {{ $labels.instance }} for more than 10 minutes: node, container or DNS metrics are missing for this target and every rule built on them is blind."
+
+    - alert: PrometheusScrapeJobMissing
+      expr: |
+        count by (job, env, tenant_id) (count_over_time(up[1h]))
+        unless
+        count by (job, env, tenant_id) (up)
       for: 15m
       labels:
         alertowner: skyloud
@@ -26,7 +46,8 @@ spec:
       annotations:
         tenant_id: "{{ $labels.tenant_id }}"
         env: "{{ $labels.env }}"
-        summary: Target {{ $labels.service }} for pod {{ $labels.exported_pod }} down
+        summary: "Scrape job {{ $labels.job }} has no target left"
+        description: "Job {{ $labels.job }} produced up series during the last hour but has none right now: its service discovery returns nothing, or the job was disabled in Alloy. PrometheusTargetMissing* cannot detect this because the series disappear instead of going to 0. The alert clears on its own one hour after an intentional removal."
 
     - alert: Watchdog
       expr: vector(1)
@@ -40,4 +61,4 @@ spec:
           This is an alert meant to ensure that the entire alerting pipeline is functional.
           This alert is always firing, therefore it should always be firing in Alertmanager
           and always fire against a receiver. There are integrations with various notification
-          mechanisms that send a notification when this alert is not firing. 
+          mechanisms that send a notification when this alert is not firing.

@@ -7,19 +7,21 @@ spec:
     - name: persistentvolume
       rules:
         - alert: NoPVMetrics
-          expr: absent(kubelet_volume_stats_used_bytes) > 0
-          for: 5m
+          expr: |
+            absent(kubelet_volume_stats_used_bytes{job="prometheus.scrape.kubelet"}) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
+          for: 30m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
-            tenant_id: "anonymous"
-            env: "unknown"
-            summary: No PV usage metrics
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: No kubelet volume metrics available
+            description: 'kubelet_volume_stats_used_bytes is absent: either the prometheus.scrape.kubelet job is not scraped or the cluster has no bound PVC. Persistent volume saturation is not monitored.'
 
         - alert: HighPersistentVolumeUsage
           expr: |
-            100 * kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 80
+            100 * kubelet_volume_stats_used_bytes{job="prometheus.scrape.kubelet"} / kubelet_volume_stats_capacity_bytes{job="prometheus.scrape.kubelet"} > 80
           for: 15m
           labels:
             alertowner: skyloud
@@ -27,11 +29,12 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $value }}% full
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is almost full
+            description: 'PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ printf "%.1f" $value }}% full (threshold 80%).'
 
         - alert: LowInodes
           expr: |
-            kubelet_volume_stats_inodes_free < 50000
+            100 * kubelet_volume_stats_inodes_free{job="prometheus.scrape.kubelet"} / kubelet_volume_stats_inodes{job="prometheus.scrape.kubelet"} < 10
           for: 15m
           labels:
             alertowner: skyloud
@@ -39,16 +42,18 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has {{ $value }} < 50k inodes available
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is running out of inodes
+            description: 'PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has only {{ printf "%.1f" $value }}% of its inodes free (threshold 10%).'
 
         - alert: PVError
           expr: |
             kube_persistentvolume_status_phase{phase=~"Failed|Pending"} > 0
-          for: 5m
+          for: 15m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $labels.phase }}
+            summary: PersistentVolume {{ $labels.persistentvolume }} is {{ $labels.phase }}
+            description: 'PersistentVolume {{ $labels.persistentvolume }} has been in phase {{ $labels.phase }} for more than 15 minutes.'
