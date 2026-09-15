@@ -116,8 +116,6 @@ spec:
               100 - 100 * node_filesystem_avail_bytes{job="node-exporter",fstype=~"ext2|ext3|ext4|xfs|btrfs|zfs"}
               / node_filesystem_size_bytes{job="node-exporter",fstype=~"ext2|ext3|ext4|xfs|btrfs|zfs"}
             ) > 80
-            unless on (instance, device)
-            node_filesystem_size_bytes{job="node-exporter",mountpoint="/etc/hostname"}
             and on (instance, device, mountpoint)
             node_filesystem_readonly{job="node-exporter"} == 0
           for: 15m
@@ -128,7 +126,7 @@ spec:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: Data volume {{ $labels.mountpoint }} almost full on {{ $labels.instance }}
-            description: 'Data volume {{ $labels.mountpoint }} ({{ $labels.device }}, {{ $labels.fstype }}) usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }} (threshold 80%). This device differs from the node root filesystem, already covered by HostHighDiskUsage.'
+            description: 'Filesystem {{ $labels.mountpoint }} ({{ $labels.device }}, {{ $labels.fstype }}) usage is {{ printf "%.1f" $value }}% on {{ $labels.instance }} (threshold 80%). Pseudo-filesystems (tmpfs, overlay, erofs) are excluded; bind mounts sharing the node root device are reported here as well as by HostHighDiskUsage.'
 
         - alert: HostOOMKill
           expr: increase(node_vmstat_oom_kill{job="node-exporter"}[15m]) > 0
@@ -182,18 +180,18 @@ spec:
 
         - alert: PodRestartedAtLeastOneTimeOver10m
           expr: |
-            increase(kube_pod_container_status_restarts_total[15m]) > 2
+            increase(kube_pod_container_status_restarts_total[10m]) > 0
             unless on(namespace, pod, container)
             (kube_pod_container_status_last_terminated_reason{reason="Completed"} == 1)
-          for: 10m
+          for: 1m
           labels:
             alertowner: skyloud
-            severity: high
+            severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: Container {{ $labels.container }} restarting in {{ $labels.namespace }}/{{ $labels.pod }}
-            description: '{{ printf "%.0f" $value }} restarts in the last 15 minutes for container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} (threshold > 2, normal Job completions excluded).'
+            description: '{{ printf "%.0f" $value }} restarts in the last 10 minutes for container {{ $labels.container }} of pod {{ $labels.namespace }}/{{ $labels.pod }} (normal Job completions excluded).'
 
         - alert: PodNotReady15m
           expr: |

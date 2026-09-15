@@ -63,15 +63,15 @@ spec:
         - alert: RabbitmqMemoryHigh
           expr: |
             rabbitmq_process_resident_memory_bytes / (rabbitmq_resident_memory_limit_bytes > 0) > 0.9
-          for: 15m
+          for: 2m
           labels:
             alertowner: skyloud
-            severity: high
+            severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: RabbitMQ memory usage close to watermark on {{ $labels.namespace }}/{{ $labels.pod }}
-            description: 'Node is using {{ $value | humanizePercentage }} of its memory high watermark for more than 15 minutes. Crossing 100% blocks publishers.'
+            description: 'Node is using {{ $value | humanizePercentage }} of its memory high watermark for more than 2 minutes. Crossing 100% blocks publishers.'
 
         - alert: RabbitmqFileDescriptorsUsage
           expr: |
@@ -114,14 +114,8 @@ spec:
 
         - alert: RabbitmqNoQueueConsumer
           expr: |
-            (
-              max by (namespace, vhost, queue) (rabbitmq_queue_consumers{queue!~"amq\\.gen-.*"}) == 0
-            )
-            and
-            (
-              max by (namespace, vhost, queue) (rabbitmq_queue_messages_ready{queue!~"amq\\.gen-.*"}) > 0
-            )
-          for: 30m
+            max by (namespace, vhost, queue) (rabbitmq_queue_consumers) < 1
+          for: 1m
           labels:
             alertowner: skyloud
             severity: high
@@ -129,15 +123,15 @@ spec:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: RabbitMQ queue without consumer on {{ $labels.namespace }} {{ $labels.vhost }}/{{ $labels.queue }}
-            description: 'Queue has no consumer while messages are waiting to be delivered, for more than 30 minutes. Idle queues and server-generated queues (amq.gen-*) are excluded.'
+            description: 'Queue has no consumer for more than 1 minute. Server-generated queues (amq.gen-*) are not excluded and are a known source of noise on this rule.'
 
         - alert: RabbitmqUnroutableMessages
           expr: |
             sum by (namespace, pod) (
-              increase(rabbitmq_channel_messages_unroutable_returned_total[15m])
-              + increase(rabbitmq_channel_messages_unroutable_dropped_total[15m])
-            ) > 10
-          for: 0m
+              increase(rabbitmq_channel_messages_unroutable_returned_total[5m])
+              + increase(rabbitmq_channel_messages_unroutable_dropped_total[5m])
+            ) > 0
+          for: 2m
           keep_firing_for: 2h
           labels:
             alertowner: skyloud
@@ -146,30 +140,22 @@ spec:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: RabbitMQ unroutable messages on {{ $labels.namespace }}/{{ $labels.pod }}
-            description: '{{ printf "%.0f" $value }} messages published to an exchange with no matching binding over the last 15 minutes. Dropped messages are lost silently: check exchange bindings and routing keys.'
+            description: '{{ printf "%.0f" $value }} messages published to an exchange with no matching binding over the last 5 minutes. Dropped messages are lost silently: check exchange bindings and routing keys. The 5m window is the minimum valid one at a 60s scrape interval.'
 
         - alert: HighPendingMessages
           expr: |
-            (
-              max by (namespace, vhost, queue) (
-                rabbitmq_queue_messages_ready + rabbitmq_queue_messages_unacked
-              ) > 1000
-            )
-            and
-            (
-              max by (namespace, vhost, queue) (
-                delta((rabbitmq_queue_messages_ready + rabbitmq_queue_messages_unacked)[30m:5m])
-              ) > 0
-            )
-          for: 15m
+            max by (namespace, vhost, queue) (
+              rabbitmq_queue_messages_ready + rabbitmq_queue_messages_unacked
+            ) > 50
+          for: 5m
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: RabbitMQ backlog growing on {{ $labels.namespace }} {{ $labels.vhost }}/{{ $labels.queue }}
-            description: '{{ printf "%.0f" $value }} messages pending and the backlog has grown over the last 30 minutes. Consumers are not keeping up with producers.'
+            summary: RabbitMQ backlog on {{ $labels.namespace }} {{ $labels.vhost }}/{{ $labels.queue }}
+            description: '{{ printf "%.0f" $value }} messages pending (ready + unacked) for more than 5 minutes, threshold 50. max by queue is used instead of sum: quorum queue members each report the same depth, summing them multiplies it by the number of replicas.'
 
         - alert: RabbitmqInstancesDifferentVersions
           expr: |

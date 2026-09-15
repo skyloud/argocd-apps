@@ -71,32 +71,23 @@ spec:
 
         - alert: HighErrorRate5xx
           expr: |
-            (
-              sum by (ingress, exported_namespace, env, tenant_id) (
-                rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.."}[5m])
-              )
-              /
-              sum by (ingress, exported_namespace, env, tenant_id) (
-                rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[5m])
-              )
-              > 0.05
+            sum by (ingress, exported_namespace, env, tenant_id) (
+              rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx",status=~"5.."}[5m])
             )
-            and
-            (
-              sum by (ingress, exported_namespace, env, tenant_id) (
-                rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[5m])
-              )
-              > 0.05
+            /
+            sum by (ingress, exported_namespace, env, tenant_id) (
+              rate(nginx_ingress_controller_requests{controller_class="k8s.io/ingress-nginx"}[5m])
             )
-          for: 5m
+            > 0.05
+          for: 2m
           labels:
             alertowner: skyloud
-            severity: critical
+            severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: "High HTTP 5xx error rate on ingress {{ $labels.exported_namespace }}/{{ $labels.ingress }}"
-            description: "{{ $value | humanizePercentage }} of the requests answered 5xx over the last 5m (threshold 5%, sustained 5m, traffic above 3 req/min)."
+            description: "{{ $value | humanizePercentage }} of the requests answered 5xx over the last 5m (threshold 5%, sustained 2m). No minimum traffic guard: a single failing request on an idle ingress is enough to reach 100%. The 5m rate window is the minimum valid one at a 60s scrape interval."
 
         - alert: HighErrorCount401
           expr: |
