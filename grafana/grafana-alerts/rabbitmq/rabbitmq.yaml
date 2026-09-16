@@ -21,9 +21,9 @@ spec:
 
         - alert: RabbitmqNodeDown
           expr: |
-            count by (namespace, service) (rabbitmq_build_info)
+            count by (namespace, service, env, tenant_id) (rabbitmq_build_info)
             <
-            max_over_time((count by (namespace, service) (rabbitmq_build_info))[3h:5m])
+            max_over_time((count by (namespace, service, env, tenant_id) (rabbitmq_build_info))[3h:5m])
           for: 15m
           labels:
             alertowner: skyloud
@@ -36,7 +36,7 @@ spec:
 
         - alert: RabbitmqMemoryAlarm
           expr: |
-            max by (namespace, pod) (rabbitmq_alarms_memory_used_watermark) == 1
+            max by (namespace, pod, env, tenant_id) (rabbitmq_alarms_memory_used_watermark) == 1
           for: 5m
           labels:
             alertowner: skyloud
@@ -49,7 +49,7 @@ spec:
 
         - alert: RabbitmqDiskAlarm
           expr: |
-            max by (namespace, pod) (rabbitmq_alarms_free_disk_space_watermark) == 1
+            max by (namespace, pod, env, tenant_id) (rabbitmq_alarms_free_disk_space_watermark) == 1
           for: 5m
           labels:
             alertowner: skyloud
@@ -88,7 +88,7 @@ spec:
 
         - alert: RabbitmqTooManyConnections
           expr: |
-            max by (namespace, pod) (rabbitmq_connections) > 5000
+            max by (namespace, pod, env, tenant_id) (rabbitmq_connections) > 5000
           for: 10m
           labels:
             alertowner: skyloud
@@ -101,7 +101,7 @@ spec:
 
         - alert: RabbitmqTooManyUnackMessages
           expr: |
-            max by (namespace, vhost, queue) (rabbitmq_queue_messages_unacked) > 1000
+            max by (namespace, vhost, queue, env, tenant_id) (rabbitmq_queue_messages_unacked) > 1000
           for: 15m
           labels:
             alertowner: skyloud
@@ -114,7 +114,7 @@ spec:
 
         - alert: RabbitmqNoQueueConsumer
           expr: |
-            max by (namespace, vhost, queue) (rabbitmq_queue_consumers) < 1
+            max by (namespace, vhost, queue, env, tenant_id) (rabbitmq_queue_consumers) < 1
           for: 1m
           labels:
             alertowner: skyloud
@@ -127,7 +127,7 @@ spec:
 
         - alert: RabbitmqUnroutableMessages
           expr: |
-            sum by (namespace, pod) (
+            sum by (namespace, pod, env, tenant_id) (
               increase(rabbitmq_channel_messages_unroutable_returned_total[5m])
               + increase(rabbitmq_channel_messages_unroutable_dropped_total[5m])
             ) > 0
@@ -144,7 +144,7 @@ spec:
 
         - alert: HighPendingMessages
           expr: |
-            max by (namespace, vhost, queue) (
+            max by (namespace, vhost, queue, env, tenant_id) (
               rabbitmq_queue_messages_ready + rabbitmq_queue_messages_unacked
             ) > 50
           for: 5m
@@ -159,8 +159,8 @@ spec:
 
         - alert: RabbitmqInstancesDifferentVersions
           expr: |
-            count by (namespace, service) (
-              count by (namespace, service, rabbitmq_version) (rabbitmq_build_info)
+            count by (namespace, service, env, tenant_id) (
+              count by (namespace, service, rabbitmq_version, env, tenant_id) (rabbitmq_build_info)
             ) > 1
           for: 1h
           labels:

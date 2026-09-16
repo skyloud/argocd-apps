@@ -7,14 +7,15 @@ spec:
     - name: velero
       rules:
         - alert: NoVeleroMetrics
-          expr: absent(velero_backup_total) > 0
+          expr: |
+            absent(velero_backup_total) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
           for: 15m
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
-            tenant_id: "anonymous"
-            env: "unknown"
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
             summary: No Velero metrics
             description: "velero_backup_total is absent: the Velero server metrics endpoint is not scraped anymore, every backup alert of this pack is blind and a total backup outage would go unnoticed."
 

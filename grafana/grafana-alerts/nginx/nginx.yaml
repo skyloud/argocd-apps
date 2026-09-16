@@ -8,7 +8,7 @@ spec:
       rules:
         - alert: NginxIngressMetricsAbsent
           expr: |
-            absent_over_time(nginx_ingress_controller_requests[15m])
+            absent_over_time(nginx_ingress_controller_requests[15m]) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
           for: 5m
           keep_firing_for: 30m
           labels:

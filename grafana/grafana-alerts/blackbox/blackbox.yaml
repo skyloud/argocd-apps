@@ -16,7 +16,7 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: At least one blackbox probe is failing, failing target unknown
+            summary: At least one static blackbox probe is failing, failing target unknown
             description: "A probe of the job blackbox/static has been returning success=0 for more than 5 minutes. The collected series carry no label identifying the probed target: instance is the node hosting the Alloy pod, not the target, so the failing endpoint cannot be named here. Check manually every entry of app.blackbox_exporter.targets. Detection is also partial: all targets collapse into a single label set and overwrite each other, so some failures never reach the metric at all."
 
         - alert: BlackboxSlowProbe
@@ -29,5 +29,31 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: At least one blackbox probe is slow, slow target unknown
+            summary: At least one static blackbox probe is slow, slow target unknown
             description: "A probe of the job blackbox/static took {{ $value | humanizeDuration }}, above the 15s budget, for more than 5 minutes. The collected series carry no label identifying the probed target, so the slow endpoint cannot be named here. Check manually every entry of app.blackbox_exporter.targets."
+
+        - alert: BlackboxTargetProbeFailure
+          expr: |
+            probe_success{job=~"blackbox/(ingresses|services)"} == 0
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: Blackbox probe {{ $labels.instance }} is failing
+            description: "The probe of {{ $labels.instance }} (namespace {{ $labels.namespace }}, job {{ $labels.job }}) has been returning success=0 for more than 5 minutes. These discovered probes carry the probed URL in instance, one alert per target."
+
+        - alert: BlackboxTargetSlowProbe
+          expr: |
+            probe_duration_seconds{job=~"blackbox/(ingresses|services)"} > 15
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: Blackbox probe {{ $labels.instance }} is slow
+            description: "The probe of {{ $labels.instance }} (namespace {{ $labels.namespace }}, job {{ $labels.job }}) took {{ $value | humanizeDuration }}, above the 15s budget, for more than 5 minutes."

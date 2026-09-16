@@ -55,8 +55,8 @@ spec:
         alertowner: skyloud
         severity: none
       annotations:
-        tenant_id: "{{ $labels.tenant_id }}"
-        env: "{{ $labels.env }}"
+        tenant_id: "skyloud"
+        env: "all"
         message: |
           This is an alert meant to ensure that the entire alerting pipeline is functional.
           This alert is always firing, therefore it should always be firing in Alertmanager

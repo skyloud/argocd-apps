@@ -21,7 +21,7 @@ spec:
 
         - alert: KedaScalerErrors
           expr: |
-            sum by (scaler, scaledObject, exported_namespace) (
+            sum by (scaler, scaledObject, exported_namespace, env, tenant_id) (
               rate(keda_scaler_detail_errors_total[15m])
             ) > 0
           for: 15m
@@ -36,7 +36,7 @@ spec:
 
         - alert: KedaScaledObjectErrors
           expr: |
-            sum by (scaledObject, exported_namespace) (
+            sum by (scaledObject, exported_namespace, env, tenant_id) (
               rate(keda_scaled_object_errors_total[15m])
             ) > 0
           for: 15m
@@ -51,11 +51,11 @@ spec:
 
         - alert: KedaScaledObjectAtMaxReplicas
           expr: |
-            max by (exported_namespace, horizontalpodautoscaler) (
+            max by (exported_namespace, horizontalpodautoscaler, env, tenant_id) (
               kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=~"keda-hpa-.*"}
             )
             >=
-            max by (exported_namespace, horizontalpodautoscaler) (
+            max by (exported_namespace, horizontalpodautoscaler, env, tenant_id) (
               kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler=~"keda-hpa-.*"}
             )
           for: 30m
