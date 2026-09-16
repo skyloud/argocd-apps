@@ -6,24 +6,56 @@ spec:
   groups:
     - name: argocd
       rules:
-        - alert: AppNotSynced
-          expr: argocd_app_info{sync_status!="Synced"} != 0
+        - alert: NoArgocdMetrics
+          expr: |
+            absent(argocd_app_info) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
           for: 15m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: No ArgoCD application metrics
+            description: "argocd_app_info is absent: the argocd-application-controller metrics endpoint is not scraped anymore, every ArgoCD alert of this pack is blind."
+
+        - alert: AppNotSynced
+          expr: |
+            argocd_app_info{sync_status="OutOfSync"} == 1
+            unless on(name, exported_namespace)
+            argocd_app_info{health_status="Progressing"} == 1
+          for: 45m
+          keep_firing_for: 15m
           labels:
             alertowner: skyloud
             severity: medium
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "Application {{ $labels.name }} is not synced"
+            summary: "ArgoCD application {{ $labels.exported_namespace }}/{{ $labels.name }} is OutOfSync"
+            description: "Application {{ $labels.name }} (project {{ $labels.project }}, namespace {{ $labels.exported_namespace }}, destination {{ $labels.dest_server }}) has been OutOfSync for more than 45 minutes outside of any in-flight sync. Transient Unknown/Progressing states are excluded."
 
         - alert: AppUnhealthy
-          expr: argocd_app_info{health_status!="Healthy"} != 0
-          for: 15m
+          expr: argocd_app_info{health_status=~"Degraded|Missing"} == 1
+          for: 30m
+          keep_firing_for: 15m
           labels:
             alertowner: skyloud
             severity: critical
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: "Application {{ $labels.name }} is not healthy"
+            summary: "ArgoCD application {{ $labels.exported_namespace }}/{{ $labels.name }} is {{ $labels.health_status }}"
+            description: "Application {{ $labels.name }} (project {{ $labels.project }}, namespace {{ $labels.exported_namespace }}, destination {{ $labels.dest_server }}) reports health_status={{ $labels.health_status }} for more than 30 minutes. Progressing, Suspended and Unknown are not alerted."
+
+        - alert: AppStuckProgressing
+          expr: argocd_app_info{health_status="Progressing"} == 1
+          for: 2h
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "ArgoCD application {{ $labels.exported_namespace }}/{{ $labels.name }} is stuck Progressing"
+            description: "Application {{ $labels.name }} (project {{ $labels.project }}, namespace {{ $labels.exported_namespace }}) has been Progressing for more than 2 hours: the rollout never converged."

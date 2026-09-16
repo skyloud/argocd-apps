@@ -15,21 +15,38 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Certificate {{ $labels.name }} is not ready
+            summary: Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} is not ready
+            description: "Certificate {{ $labels.name }} in namespace {{ $labels.exported_namespace }} (issuer {{ $labels.issuer_kind }} {{ $labels.issuer_name }}) has been in Ready=False for more than 15 minutes: issuance or renewal is failing."
 
         - alert: CertificateExpiringSoon
-          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 21 * 24 * 3600
           for: 1h
           labels:
             alertowner: skyloud
-            severity: medium
+            severity: high
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Certificate {{ $labels.name }} expires in less than 7 days
+            summary: Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires in less than 21 days
+            description: "Certificate {{ $labels.name }} in namespace {{ $labels.exported_namespace }} expires in {{ $value | humanizeDuration }}. cert-manager renews at two thirds of the lifetime, so reaching 21 days means automatic renewal is already late."
+
+        - alert: CertificateExpiryImminent
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 3 * 24 * 3600
+          for: 30m
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires in less than 3 days
+            description: "Certificate {{ $labels.name }} in namespace {{ $labels.exported_namespace }} expires in {{ $value | humanizeDuration }} and has not been renewed: TLS outage imminent, manual intervention required."
 
         - alert: CertificateRenewalFailed
-          expr: increase(certmanager_certificate_renewal_timestamp_seconds[1h]) == 0 and certmanager_certificate_expiration_timestamp_seconds - time() < 30 * 24 * 3600
+          expr: |
+            (time() - certmanager_certificate_renewal_timestamp_seconds > 6 * 3600)
+            unless on (name, exported_namespace)
+            (certmanager_certificate_ready_status{condition="False"} == 1)
           for: 1h
           labels:
             alertowner: skyloud
@@ -37,4 +54,5 @@ spec:
           annotations:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
-            summary: Certificate {{ $labels.name }} renewal has failed
+            summary: Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} renewal is overdue
+            description: "cert-manager scheduled the renewal of {{ $labels.name }} in namespace {{ $labels.exported_namespace }} {{ $value | humanizeDuration }} ago and the renewal timestamp has not moved forward, while the certificate is still Ready: the renewal loop is stuck before the certificate degrades."

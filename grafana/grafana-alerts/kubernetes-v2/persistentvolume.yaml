@@ -7,20 +7,35 @@ spec:
     - name: persistentvolume
       rules:
         - alert: NoPVMetrics
-          expr: absent(kube_persistentvolume_capacity_bytes) > 0
-          for: 5m
+          expr: |
+            absent(kube_persistentvolume_capacity_bytes) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
+          for: 30m
           labels:
             alertowner: skyloud
             severity: high
           annotations:
-            tenant_id: "anonymous"
-            env: "unknown"
-            summary: No PV metrics from kube-state-metrics
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: No kube-state-metrics persistent volume metrics available
+            description: 'kube_persistentvolume_capacity_bytes is absent: kube-state-metrics is not deployed, or its Service is not scraped (missing prometheus.io/scrape annotation, or its namespace listed in scrape_exclude_namespaces), or the cluster has no PersistentVolume. Persistent volume state is not monitored.'
 
         - alert: PVError
           expr: |
             kube_persistentvolume_status_phase{phase=~"Failed|Pending"} > 0
-          for: 5m
+          for: 15m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: PersistentVolume {{ $labels.persistentvolume }} is {{ $labels.phase }}
+            description: 'PersistentVolume {{ $labels.persistentvolume }} has been in phase {{ $labels.phase }} for more than 15 minutes.'
+
+        - alert: PVCPending
+          expr: |
+            kube_persistentvolumeclaim_status_phase{phase=~"Pending|Lost"} == 1
+          for: 15m
           labels:
             alertowner: skyloud
             severity: high
@@ -28,3 +43,4 @@ spec:
             tenant_id: "{{ $labels.tenant_id }}"
             env: "{{ $labels.env }}"
             summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $labels.phase }}
+            description: 'PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has been in phase {{ $labels.phase }} for more than 15 minutes, no volume was bound.'
