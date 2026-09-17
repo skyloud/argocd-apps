@@ -17,6 +17,7 @@ metadata:
 spec:
   template:
     spec:
+      serviceAccountName: {{ include "common.fullname" $ }}
       containers:
       - name: {{ .name }}
         {{- if and (.image).tag .image.repository }}
