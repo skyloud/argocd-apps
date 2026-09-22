@@ -1,0 +1,25 @@
+{{- $experimentalGatewayApi := false -}}
+{{- with .Values.app -}}
+  {{- with .providers -}}
+    {{- with .kubernetesGateway -}}
+      {{- $experimentalGatewayApi = default false .experimentalChannel -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if $experimentalGatewayApi -}}
+{{- $crdPaths := list
+  "files/gateway-api/gateway.networking.k8s.io_tcproutes.yaml"
+  "files/gateway-api/gateway.networking.k8s.io_tlsroutes.yaml"
+-}}
+{{- range $index, $crdPath := $crdPaths }}
+{{- $crd := fromYaml ($.Files.Get $crdPath) -}}
+{{- if not (hasKey $crd.metadata "annotations") -}}
+{{- $_ := set $crd.metadata "annotations" (dict) -}}
+{{- end -}}
+{{- $_ := set $crd.metadata.annotations "argocd.argoproj.io/sync-wave" "-2" -}}
+{{- if gt $index 0 }}
+---
+{{- end }}
+{{ toYaml $crd }}
+{{- end }}
+{{- end }}
