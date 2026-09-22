@@ -36,6 +36,11 @@ data:
       kubectl label node "${NODE_NAME}" "${key}=${value}" --overwrite
     }
 
+    remove_label() {
+      local key="$1"
+      kubectl label node "${NODE_NAME}" "${key}-" --overwrite 2>/dev/null || true
+    }
+
     {{- range .Values.gates }}
     {{- if (.enabled | default true) }}
     {{- $gateName := .name }}
@@ -46,7 +51,7 @@ data:
   {{- $failsafe := .failsafe.timeoutSeconds | default 120 }}
   {{- $onTimeout := .failsafe.onTimeout | default "removeTaint" }}
     GATE_START=$(date +%s)
-    GATE_READY=false
+    GATE_OUTCOME=
     while true; do
       if \
   {{- if eq (.check.type | default "http") "http" }}
@@ -59,26 +64,23 @@ data:
         false
   {{- end }}
       then
-        GATE_READY=true
+        GATE_OUTCOME=ready
         log "gate={{ $gateName }}: check passed"
         break
       fi
       ELAPSED=$(( $(date +%s) - GATE_START ))
       if (( ELAPSED >= {{ $failsafe }} )); then
-        log "gate={{ $gateName }}: failsafe timeout after {{ $failsafe }}s (onTimeout={{ $onTimeout }})"
-  {{- if eq $onTimeout "removeTaint" }}
-  {{- range .actions }}
-  {{- if eq .type "removeTaint" }}
-        remove_taint "{{ .key }}" "{{ .effect | default "NoSchedule" }}"
-  {{- end }}
-  {{- end }}
-  {{- end }}
-        GATE_READY=true
+        GATE_OUTCOME=failsafe
+        log "gate={{ $gateName }}: FAILSAFE timeout after {{ $failsafe }}s (onTimeout={{ $onTimeout }}) — check never passed"
         break
       fi
       sleep {{ $interval }}
     done
-    if [[ "${GATE_READY}" == "true" ]]; then
+
+    # The two outcomes run DIFFERENT actions on purpose: a node that only ever hit the
+    # failsafe must not end up labelled the same as one whose check actually passed,
+    # or there is no way to tell a verified node from a timed-out one.
+    if [[ "${GATE_OUTCOME}" == "ready" ]]; then
   {{- range .actions }}
   {{- if eq .type "removeTaint" }}
       remove_taint "{{ .key }}" "{{ .effect | default "NoSchedule" }}"
@@ -87,9 +89,31 @@ data:
       set_label "{{ .key }}" "{{ .value }}"
       log "gate={{ $gateName }}: set label {{ .key }}={{ .value }}"
   {{- else if eq .type "removeLabel" }}
-      kubectl label node "${NODE_NAME}" "{{ .key }}-" --overwrite 2>/dev/null || true
+      remove_label "{{ .key }}"
       log "gate={{ $gateName }}: removed label {{ .key }}"
   {{- end }}
+  {{- end }}
+  {{- if eq $onTimeout "removeTaint" }}
+    else
+      # Fail-open: the check never passed, but the startup taint is cleared anyway so the
+      # NodePool cannot deadlock. setLabel uses failsafeValue (default "failsafe") — the
+      # label records the OUTCOME, never readiness. Nothing downstream should treat a
+      # node labelled "failsafe" as verified.
+  {{- range .actions }}
+  {{- if eq .type "removeTaint" }}
+      remove_taint "{{ .key }}" "{{ .effect | default "NoSchedule" }}"
+      log "gate={{ $gateName }}: FAILSAFE removed taint {{ .key }}:{{ .effect | default "NoSchedule" }}"
+  {{- else if eq .type "setLabel" }}
+      set_label "{{ .key }}" "{{ .failsafeValue | default "failsafe" }}"
+      log "gate={{ $gateName }}: FAILSAFE set label {{ .key }}={{ .failsafeValue | default "failsafe" }}"
+  {{- else if eq .type "removeLabel" }}
+      remove_label "{{ .key }}"
+      log "gate={{ $gateName }}: FAILSAFE removed label {{ .key }}"
+  {{- end }}
+  {{- end }}
+  {{- else }}
+    else
+      log "gate={{ $gateName }}: FAILSAFE onTimeout={{ $onTimeout }} — taint retained, no actions run"
   {{- end }}
     fi
     {{- end }}
