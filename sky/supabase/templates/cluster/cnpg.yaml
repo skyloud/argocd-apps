@@ -125,6 +125,29 @@ spec:
     storageClass: {{ . | quote }}
     {{- end }}
 
+  {{- if .Values.cnpg.walStorage.enabled }}
+  # Volume dedie aux WAL, separe des donnees.
+  #
+  # CNPG refuse de demarrer PostgreSQL quand la place manque pour les WAL
+  # (« Detected low-disk space condition, avoid starting the instance »). Avec
+  # un volume unique, n'importe quelle croissance cote donnees peut donc
+  # coucher l'instance — c'est exactement ce qui est arrive le 2026-09-22, ou
+  # des journaux applicatifs ont rempli le disque et empeche le primaire de
+  # redemarrer, alors que les donnees metier pesaient 17 Mo.
+  #
+  # Separer les deux borne le rayon d'action : une derive cote donnees ne peut
+  # plus empecher le demarrage, et inversement.
+  #
+  # ⚠️ A DECIDER A LA CREATION DU CLUSTER. Ajouter walStorage a un cluster en
+  # service impose de reconstruire chaque instance (un PVC ne se redimensionne
+  # pas a la baisse et ne se scinde pas). Le mettre des le depart ne coute rien.
+  walStorage:
+    size: {{ .Values.cnpg.walStorage.size }}
+    {{- with (default .Values.cnpg.storage.storageClass .Values.cnpg.walStorage.storageClass) }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+
   {{- if .Values.cnpg.backup.enabled }}
   plugins:
     - name: barman-cloud.cloudnative-pg.io

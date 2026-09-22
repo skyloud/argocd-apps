@@ -206,6 +206,15 @@ cnpg:
   storage:
     size: 50Gi
     storageClass: ""
+  # Volume WAL dedie. Desactive par defaut pour ne rien changer aux clusters
+  # existants : l'activer sur un cluster deja en service impose de reconstruire
+  # chaque instance. A activer sur TOUT NOUVEAU cluster — voir le commentaire du
+  # template cluster/cnpg.yaml pour le pourquoi.
+  walStorage:
+    enabled: false
+    size: 10Gi
+    # Vide = reprend cnpg.storage.storageClass.
+    storageClass: ""
   monitoring:
     # Requires the monitoring.coreos.com/v1 CRDs (Prometheus Operator).
     enablePodMonitor: false
