@@ -353,6 +353,36 @@ migrationsCode:
   # bootstrap files below.
   mountPath: /migrations
 
+  # Additional migration directories inside the SAME image, each applied after
+  # the flat root above, in the order listed, with its OWN ledger.
+  #
+  # This exists because a project can end up with two migration tools writing
+  # to the same database — for instance a Supabase CLI history under
+  # `supabase/migrations/` and a second tool's history elsewhere in the repo.
+  # Merging them into one directory does not work: their version prefixes come
+  # from different schemes and do not interleave correctly under a single
+  # lexicographic sort (`0007_x.sql` sorts before `20250101000000_y.sql`
+  # whatever their real order). Keeping one directory and one ledger per tool
+  # preserves each tool's own ordering, and lets each tool keep reading its own
+  # history.
+  #
+  # Ordering between sources is the order of this list: the root directory
+  # first, then each entry. Put the newer history last.
+  #
+  # `subPath` is relative to mountPath and must be a single path segment.
+  # `ledger` is a schema-qualified table, created here if absent, with the same
+  # (version, name) layout as schema_migrations. Never point two sources at the
+  # same ledger: a version collision between them would silently skip a file.
+  #
+  #   extraDirs:
+  #     - subPath: drizzle
+  #       ledger: supabase_migrations.drizzle_migrations
+  #
+  # A directory listed here but absent from the image is an error, not a
+  # no-op — see the guard in templates/jobs/migrations.yaml. A typo in a
+  # subPath must not look like "nothing to apply".
+  extraDirs: []
+
 # =============================================================================
 # Migrations runner — generic SQL runner. Built-in Supabase role/schema
 # bootstrap (see migrations.builtinInit below) runs first; your own

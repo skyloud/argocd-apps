@@ -44,6 +44,31 @@ consulted per file, so already-applied migrations are skipped.
 {{- $mountPath := .Values.migrationsCode.mountPath }}
 {{- $builtinInit := .Values.migrations.builtinInit.enabled }}
 {{- $hasAppMigrations := ne .Values.migrationsCode.image.reference "" }}
+{{- $extraDirs := default (list) .Values.migrationsCode.extraDirs }}
+{{- /*
+Validated at render time rather than in the shell: a bad subPath or ledger
+should stop the sync, not produce a Job that fails halfway through applying
+SQL. `subPath` must be one path segment (no `/`, no `..`) because it is
+concatenated onto mountPath, and `ledger` must be schema-qualified and made of
+identifier characters only because it is interpolated into SQL that cannot be
+parameterised (a table name is not a bind parameter).
+*/}}
+{{- range $extraDirs }}
+{{- if not $hasAppMigrations }}
+{{- fail "migrationsCode.extraDirs requires migrationsCode.image.reference: the extra directories live inside that image" }}
+{{- end }}
+{{- $sub := required "migrationsCode.extraDirs[].subPath is required" .subPath }}
+{{- if or (contains "/" $sub) (contains ".." $sub) }}
+{{- fail (printf "migrationsCode.extraDirs[].subPath must be a single path segment, got %q" $sub) }}
+{{- end }}
+{{- $led := required "migrationsCode.extraDirs[].ledger is required" .ledger }}
+{{- if not (regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*\\.[a-zA-Z_][a-zA-Z0-9_]*$" $led) }}
+{{- fail (printf "migrationsCode.extraDirs[].ledger must be schema-qualified (schema.table), got %q" $led) }}
+{{- end }}
+{{- if eq $led "supabase_migrations.schema_migrations" }}
+{{- fail "migrationsCode.extraDirs[].ledger cannot be supabase_migrations.schema_migrations: each source needs its own ledger" }}
+{{- end }}
+{{- end }}
 {{- $argocdHook := .Values.migrations.argocdHook }}
 {{- $vault := .Values.migrations.vaultBootstrap }}
 {{- $guc := .Values.migrations.gucBootstrap }}
@@ -208,6 +233,17 @@ spec:
               psql_exec -c "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS statements text[];"
               psql_exec -c "ALTER TABLE supabase_migrations.schema_migrations ADD COLUMN IF NOT EXISTS name text;"
 
+              {{- range $extraDirs }}
+              {{- /*
+              One ledger per extra source. `applied_at` is kept here (unlike
+              schema_migrations, which stays byte-compatible with what the
+              Supabase CLI creates): nothing outside this chart reads these
+              tables, so recording when a file landed costs nothing and
+              answers the first question asked after an incident.
+              */}}
+              psql_exec -c "CREATE TABLE IF NOT EXISTS {{ .ledger }} (version text NOT NULL PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
+              {{- end }}
+
               {{- if $builtinInit }}
               psql_exec -c "CREATE TABLE IF NOT EXISTS supabase_migrations.chart_bootstrap (version text NOT NULL PRIMARY KEY, name text, applied_at timestamptz NOT NULL DEFAULT now());"
               {{- /*
@@ -282,7 +318,36 @@ spec:
               apply_dir "$SUPABASE_INIT_DIR" supabase_migrations.chart_bootstrap
               {{- end }}
               {{- if $hasAppMigrations }}
+              {{- /*
+              An app-migrations image with no SQL at its root is a build
+              accident, not a valid state: you asked for migrations by setting
+              image.reference. Without this check the Job applies nothing,
+              exits 0, and ArgoCD reports Succeeded - the failure mode that
+              leaves a database empty while every dashboard is green. The
+              usual cause is a .dockerignore or build context that silently
+              stopped matching the migrations directory.
+              */}}
+              if [ -z "$(find -L "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' -print -quit)" ]; then
+                echo "migrationsCode.image contains no *.sql at $MIGRATIONS_DIR - check the image build context" >&2
+                exit 1
+              fi
               apply_dir "$MIGRATIONS_DIR" supabase_migrations.schema_migrations
+              {{- range $extraDirs }}
+              {{- /*
+              An absent directory is fatal, not skipped. `find` on a missing
+              path prints to stderr and returns non-zero, but it sits in a
+              pipeline inside apply_dir where that status is lost - the loop
+              would simply run zero times and the Job would report success
+              with nothing applied. The whole point of this runner is that
+              "applied nothing" and "had nothing to apply" are different
+              outcomes, so the check is explicit and comes first.
+              */}}
+              if [ ! -d "$MIGRATIONS_DIR/{{ .subPath }}" ]; then
+                echo "migrationsCode.extraDirs: $MIGRATIONS_DIR/{{ .subPath }} is not in the image" >&2
+                exit 1
+              fi
+              apply_dir "$MIGRATIONS_DIR/{{ .subPath }}" {{ .ledger }}
+              {{- end }}
               {{- end }}
 
               {{- if $vault.enabled }}
