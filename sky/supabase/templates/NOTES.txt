@@ -1,0 +1,40 @@
+Supabase ({{ .Release.Name }}) deployed to namespace {{ .Release.Namespace }}.
+
+Postgres (CloudNativePG): {{ include "supabase.cnpgClusterName" . }} ({{ .Values.cnpg.instances }} instance{{ if gt (.Values.cnpg.instances | int) 1 }}s{{ end }})
+{{- if .Values.pgdog.enabled }}
+PgDog pooler: {{ include "supabase.svcFullname" (dict "root" . "svc" "pgdog") }}:5432 ({{ .Values.pgdog.replicaCount }} replica{{ if gt (.Values.pgdog.replicaCount | int) 1 }}s{{ end }}, read-replica routing: {{ .Values.pgdog.useReadReplicas }})
+{{- end }}
+{{- if .Values.kong.enabled }}
+
+API gateway: {{ include "supabase.svcFullname" (dict "root" . "svc" "kong") }} (ClusterIP:{{ .Values.kong.service.port }})
+{{- if .Values.kong.ingress.enabled }}
+{{- range .Values.kong.ingress.hosts }}
+  https://{{ .host }}
+{{- end }}
+{{- else }}
+Ingress is disabled — expose `{{ include "supabase.svcFullname" (dict "root" . "svc" "kong") }}` yourself (port-forward, LoadBalancer, or set kong.ingress.enabled=true).
+{{- end }}
+{{- end }}
+
+Check rollout status:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Check the migrations Job:
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "supabase.fullname" . }}-migrations{{- if .Values.migrations.appendReleaseRevisionToJobName }}-r{{ .Release.Revision }}{{- end }}
+
+{{- if not .Values.jwt.secretName }}
+
+WARNING: jwt.secretName is not set. Every service that needs a JWT secret,
+anon key, or service key will fail to start until you create that Secret
+and set jwt.secretName.
+{{- end }}
+{{- if not .Values.functionsCode.image.reference }}
+
+WARNING: functionsCode.image.reference is not set — the functions Deployment
+will fail to schedule (ImageVolume has no image to mount).
+{{- end }}
+{{- if not .Values.migrationsCode.image.reference }}
+
+WARNING: migrationsCode.image.reference is not set — the migrations Job will
+fail to schedule (ImageVolume has no image to mount).
+{{- end }}

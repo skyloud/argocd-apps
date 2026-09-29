@@ -1,0 +1,21 @@
+{{- /*
+Built-in Supabase role/schema/extension bootstrap, rendered as a ConfigMap so
+the migrations Job can mount it read-only alongside the consumer-supplied
+migrationsCode ImageVolume. See files/supabase-init/ and README
+"Bootstrapping Supabase roles".
+*/}}
+{{- if and .Values.migrations.enabled .Values.migrations.builtinInit.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "supabase.fullname" . }}-supabase-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sql-migrations
+data:
+  {{- range $path, $_ := .Files.Glob "files/supabase-init/*.sql" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+{{- end }}
