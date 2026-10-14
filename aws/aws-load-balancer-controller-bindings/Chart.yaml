@@ -1,0 +1,5 @@
+apiVersion: v2
+name: aws-load-balancer-controller-bindings
+description: TargetGroupBindings for an AWS Load Balancer Controller installed by another Application
+type: application
+version: 0.1.0
