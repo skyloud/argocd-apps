@@ -1,0 +1,410 @@
+{{- /*
+Edge Functions (Deno / supabase/edge-runtime). Function code is mounted
+read-only from `functionsCode.image.reference` via Kubernetes ImageVolume —
+no PVC, no custom application image. Expected layout: one directory per
+function under the mount path, each with an `index.ts`.
+
+A small router (`main/index.ts`, rendered inline below) dispatches on the
+first URL path segment to the matching function directory. DB_HOST is the
+CNPG primary directly — Edge Functions can run long-lived invocations that
+shouldn't hold a transaction-pool slot.
+*/}}
+{{- if .Values.functions.enabled -}}
+{{- $svc := dict "root" . "svc" "functions" -}}
+{{- $fullname := include "supabase.svcFullname" $svc -}}
+{{- $mountPath := .Values.functionsCode.mountPath -}}
+{{- if .Values.functions.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "supabase.svcServiceAccountName" $svc }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.functions.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-main
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+data:
+  index.ts: |
+    // Dispatches to <mountPath>/<first-url-segment>/index.ts.
+    const JWT_SECRET = Deno.env.get('JWT_SECRET') ?? ''
+    const FUNCTIONS_DIR = '{{ $mountPath }}'
+    const SHARED_IMPORT_MAP = {{ .Values.functionsCode.importMapPath | default "" | quote }}
+    // Rendered from functions.verifyJwtDefault / functions.verifyJwt.
+    const VERIFY_JWT_DEFAULT = {{ .Values.functions.verifyJwtDefault }}
+    const VERIFY_JWT: Record<string, boolean> = {{ .Values.functions.verifyJwt | default dict | toJson }}
+
+    const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+
+    // Verified with Web Crypto rather than a remote `jose` import: the
+    // previous version fetched deno.land at request time, which needs public
+    // egress from the pod and fails closed on any locked-down cluster.
+    let hmacKey: Promise<CryptoKey> | null = null
+    function signingKey(): Promise<CryptoKey> {
+      if (!hmacKey) {
+        hmacKey = crypto.subtle.importKey(
+          'raw',
+          encoder.encode(JWT_SECRET),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['verify'],
+        )
+      }
+      return hmacKey
+    }
+
+    function base64UrlDecode(part: string): Uint8Array {
+      const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+      const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='))
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      return bytes
+    }
+
+    async function verifyJWT(token: string): Promise<boolean> {
+      const [header, payload, signature] = token.split('.')
+      if (!header || !payload || !signature) return false
+      try {
+        // Pinned to HS256 on purpose. Accepting whatever `alg` the token
+        // claims is the classic JWT bypass (`alg: none`), and this router is
+        // only given the HMAC secret anyway — an asymmetric token (RS256/
+        // ES256, i.e. the `jwtApiKeys` mode) cannot be checked here and is
+        // rejected rather than waved through.
+        if (JSON.parse(decoder.decode(base64UrlDecode(header))).alg !== 'HS256') return false
+        const valid = await crypto.subtle.verify(
+          'HMAC',
+          await signingKey(),
+          base64UrlDecode(signature),
+          encoder.encode(`${header}.${payload}`),
+        )
+        if (!valid) return false
+        const claims = JSON.parse(decoder.decode(base64UrlDecode(payload)))
+        if (typeof claims.exp === 'number' && claims.exp * 1000 <= Date.now()) return false
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    function json(body: unknown, status: number): Response {
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    async function exists(path: string): Promise<boolean> {
+      try {
+        await Deno.stat(path)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    Deno.serve(async (req: Request) => {
+      const { pathname } = new URL(req.url)
+      const serviceName = pathname.split('/')[1]
+      if (!serviceName) {
+        return json({ msg: 'missing function name in request path' }, 400)
+      }
+
+      const servicePath = `${FUNCTIONS_DIR}/${serviceName}`
+      if (!(await exists(`${servicePath}/index.ts`))) {
+        return json({ error: `Function ${serviceName} not found` }, 404)
+      }
+
+      // Resolved per function, and only after the function is known to
+      // exist, so a public function stays reachable while its neighbours
+      // stay protected. OPTIONS is always allowed through for CORS
+      // preflight, which carries no Authorization header by definition.
+      const mustVerify = VERIFY_JWT[serviceName] ?? VERIFY_JWT_DEFAULT
+      if (mustVerify && req.method !== 'OPTIONS') {
+        const token = req.headers.get('authorization')?.replace(/^[Bb]earer\s+/, '')
+        if (!token || !(await verifyJWT(token))) {
+          return json({ msg: 'Invalid JWT' }, 401)
+        }
+      }
+
+      // A function's own deno.json wins (this is what `supabase functions
+      // deploy` honours per function); otherwise fall back to the shared map
+      // if one was configured. Passing a non-existent path makes the worker
+      // fail to boot, so both are probed rather than assumed.
+      let importMapPath: string | null = null
+      for (const candidate of [`${servicePath}/deno.json`, `${servicePath}/deno.jsonc`]) {
+        if (await exists(candidate)) {
+          importMapPath = candidate
+          break
+        }
+      }
+      if (!importMapPath && SHARED_IMPORT_MAP && (await exists(SHARED_IMPORT_MAP))) {
+        importMapPath = SHARED_IMPORT_MAP
+      }
+
+      // Le worker herite des variables d'environnement du service principal,
+      // mais PAS de ses droits d'acces disque : son bac a sable est limite a
+      // servicePath. AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE lui arrive donc
+      // avec un chemin qu'il ne peut pas lire, et toute resolution de
+      // credentials EKS Pod Identity echoue en « path not found » — alors que
+      // le fichier existe et est parfaitement lisible depuis le conteneur.
+      //
+      // Le service principal, lui, a les droits. Il lit le jeton et le passe
+      // en VALEUR via AWS_CONTAINER_AUTHORIZATION_TOKEN, la variable standard
+      // du fournisseur de credentials conteneur d'AWS, acceptee a la place du
+      // fichier par les SDK comme par _shared/aws-config.ts.
+      //
+      // Relu a CHAQUE creation de worker et jamais mis en cache : le jeton
+      // projete par EKS est renouvele periodiquement, et une copie gardee en
+      // memoire expirerait en silence — panne intermittente, des heures apres
+      // le deploiement.
+      //
+      // Ne jamais journaliser la valeur lue.
+      async function awsContainerAuthEnv(): Promise<[string, string][]> {
+        const tokenFile = Deno.env.get('AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE')
+        if (!tokenFile) return []
+        try {
+          const token = (await Deno.readTextFile(tokenFile)).trim()
+          return token ? [['AWS_CONTAINER_AUTHORIZATION_TOKEN', token]] : []
+        } catch (e) {
+          // Ne fait PAS echouer la requete : une fonction qui n'appelle aucun
+          // service AWS doit continuer de repondre. Celles qui en ont besoin
+          // leveront leur propre erreur, explicite.
+          console.error('jeton Pod Identity illisible:', String(e))
+          return []
+        }
+      }
+
+      try {
+        const worker = await EdgeRuntime.userWorkers.create({
+          servicePath,
+          memoryLimitMb: {{ .Values.functions.memoryLimitMb }},
+          workerTimeoutMs: {{ .Values.functions.workerTimeoutMs }},
+          noModuleCache: false,
+          importMapPath,
+          envVars: [
+            ...Object.entries(Deno.env.toObject()),
+            ...(await awsContainerAuthEnv()),
+          ],
+        })
+        return await worker.fetch(req)
+      } catch (e) {
+        return json({ msg: String(e) }, 500)
+      }
+    })
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+  {{- with .Values.functions.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.functions.service.type }}
+  ports:
+    - port: {{ .Values.functions.service.port }}
+      targetPort: 9000
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "supabase.svcSelectorLabels" $svc | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svc | nindent 4 }}
+spec:
+  {{- if not .Values.functions.autoscaling.enabled }}
+  replicas: {{ .Values.functions.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "supabase.svcSelectorLabels" $svc | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- /*
+        The router is mounted with `subPath`, and subPath mounts are never
+        refreshed by the kubelet when the ConfigMap changes. Without this,
+        editing functions.verifyJwt / memoryLimitMb would update the
+        ConfigMap and change nothing until someone restarted the pod by hand.
+        Hashes the values the router is rendered from - not the rendered file,
+        which lives in this same template and would recurse.
+        */}}
+        checksum/main: {{ printf "%v|%v|%v|%v|%v|%v"
+          .Values.functions.verifyJwtDefault
+          (.Values.functions.verifyJwt | default dict | toJson)
+          .Values.functions.memoryLimitMb
+          .Values.functions.workerTimeoutMs
+          $mountPath
+          .Values.functionsCode.importMapPath | sha256sum | trunc 16 }}
+        {{- with .Values.functions.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "supabase.svcSelectorLabels" $svc | nindent 8 }}
+    spec:
+      {{- with (default .Values.registryPullSecrets .Values.functions.image.pullSecrets) }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.functions.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ . }}
+      {{- end }}
+      serviceAccountName: {{ include "supabase.svcServiceAccountName" $svc }}
+      {{- with .Values.functions.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "supabase.functions.name" . }}
+          args:
+            - start
+            - --main-service
+            - /home/deno/main
+          {{- with .Values.functions.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.functions.image.repository }}:{{ .Values.functions.image.tag }}"
+          imagePullPolicy: {{ .Values.functions.image.pullPolicy }}
+          env:
+            - name: DB_HOST
+              value: {{ include "supabase.cnpgRwService" . | quote }}
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              value: postgres
+            - name: DB_DATABASE
+              value: {{ include "supabase.dbName" . | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.cnpgAppSecretName" . | quote }}
+                  key: password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: secret
+            - name: SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: anonKey
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.jwtSecretName" . | quote }}
+                  key: serviceKey
+            {{- if .Values.kong.enabled }}
+            - name: SUPABASE_URL
+              value: {{ include "supabase.internalKongUrl" . | quote }}
+            {{- end }}
+            - name: SUPABASE_DB_URL
+              value: "postgresql://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_DATABASE)"
+            {{- if .Values.smtp.enabled }}
+            - name: SMTP_HOST
+              value: {{ .Values.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.smtp.port | quote }}
+            {{- with .Values.smtp.from }}
+            - name: SMTP_FROM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.smtp.secretName }}
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.secretName | quote }}
+                  key: username
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.smtp.secretName | quote }}
+                  key: password
+            {{- end }}
+            {{- end }}
+            {{- with .Values.functions.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.functions.envFrom .Values.config.secretName }}
+          envFrom:
+            {{- with .Values.functions.envFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.config.secretName }}
+            - secretRef:
+                name: {{ . | quote }}
+                optional: true
+            {{- end }}
+          {{- end }}
+          {{- with .Values.functions.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.functions.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.functions.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- with .Values.functions.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: functions-code
+              mountPath: {{ $mountPath }}
+              readOnly: true
+            # Mounted at a path independent of $mountPath (not nested under it):
+            # the ImageVolume backing $mountPath is read-only content from the
+            # user's functions image, which has no reason to contain a "main"
+            # directory for us to mount into.
+            - name: functions-main
+              mountPath: /home/deno/main/index.ts
+              subPath: index.ts
+              readOnly: true
+      volumes:
+        {{- with .Values.functions.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        - name: functions-code
+          image:
+            reference: {{ required "functionsCode.image.reference is required" .Values.functionsCode.image.reference | quote }}
+            pullPolicy: {{ .Values.functionsCode.image.pullPolicy }}
+        - name: functions-main
+          configMap:
+            name: {{ $fullname }}-main
+      {{- with .Values.functions.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.functions.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.functions.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
