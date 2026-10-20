@@ -1,1 +1,28 @@
 app: {}
+
+# Gateway API HTTPRoutes, rendered here so they land in the same ArgoCD
+# Application as the Gateway API CRDs the traefik subchart ships.
+# parentRefs defaults to the Gateway the subchart creates.
+routes: {}
+  # argocd:
+  #   namespace: argocd
+  #   hostnames:
+  #     - argocd.example.com
+  #   annotations: {}
+  #   parentRefs:
+  #     - name: traefik-gateway
+  #       namespace: system-traefik
+  #       sectionName: web
+  #   rules:
+  #     - matches:
+  #         - path:
+  #             type: PathPrefix
+  #             value: /
+  #           headers:
+  #             - type: Exact
+  #               name: X-Env
+  #               value: prod
+  #       backendRefs:
+  #         - name: argocd-server
+  #           port: 80
+  #           weight: 100
