@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":separateMajorReleases",
+    ":ignoreUnstable",
+    ":automergeDisabled"
+  ],
+  "semanticCommits": "enabled",
+  "ignorePaths": [
+    ".claude/**"
+  ],
+  "helmv3": {
+    "rangeStrategy": "bump"
+  },
+  "kubernetes": {
+    "managerFilePatterns": [
+      "/^sky/kubernetes-event-exporter(-helm)?/.+\\.yaml$/",
+      "/^sky/scaleway-ccm/templates/.+\\.yaml$/"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Wrapper chart version mirrors its dependency (https repositories)",
+      "managerFilePatterns": [
+        "/(^|/)Chart\\.yaml$/"
+      ],
+      "matchStrings": [
+        "(?m)^version: (?<currentValue>\\S+)\\n[\\s\\S]*?dependencies:\\n\\s+- name: (?<depName>\\S+)\\n\\s+version: \\S+\\n\\s+repository: \"?(?<registryUrl>https[^\"\\n]+)\"?"
+      ],
+      "datasourceTemplate": "helm",
+      "extractVersionTemplate": "^v?(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Wrapper chart version mirrors its dependency (OCI repositories)",
+      "managerFilePatterns": [
+        "/(^|/)Chart\\.yaml$/"
+      ],
+      "matchStrings": [
+        "(?m)^version: (?<currentValue>\\S+)\\n[\\s\\S]*?dependencies:\\n\\s+- name: (?<depName>\\S+)\\n\\s+version: \\S+\\n\\s+repository: \"?oci://(?<packageName>[^\"\\n]+)\"?"
+      ],
+      "datasourceTemplate": "docker",
+      "packageNameTemplate": "{{{packageName}}}/{{{depName}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Tool versions downloaded by the argocd skyloud plugin",
+      "managerFilePatterns": [
+        "/^argoproj/argo-cd/plugins/skyloud\\.yaml$/"
+      ],
+      "matchStrings": [
+        "name: (?<depName>SOPS|YQ|HELM)_VERSION\\s+value: \"(?<currentValue>v[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "packageNameTemplate": "{{#if (equals depName 'SOPS')}}getsops/sops{{else if (equals depName 'YQ')}}mikefarah/yq{{else}}helm/helm{{/if}}"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "OCI charts are looked up as docker tags, keep helm ranges valid",
+      "matchManagers": [
+        "helmv3"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "versioning": "helm"
+    }
+  ]
+}
