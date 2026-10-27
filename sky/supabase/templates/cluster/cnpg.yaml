@@ -39,6 +39,7 @@ spec:
   {{- end }}
   instances: {{ .Values.cnpg.instances }}
   primaryUpdateMethod: {{ .Values.cnpg.primaryUpdateMethod | default "switchover" }}
+  enablePDB: {{ .Values.cnpg.enablePDB }}
   enableSuperuserAccess: {{ .Values.cnpg.enableSuperuserAccess }}
   {{- with .Values.cnpg.superuserSecret.name }}
   superuserSecret:
