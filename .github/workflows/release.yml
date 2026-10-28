@@ -1,0 +1,35 @@
+name: release-charts
+on:
+  push:
+    paths:
+      - "**/Chart.yaml"
+      - .github/workflows/release.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  packages: write
+concurrency: release-charts
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: helm/chart-releaser-action@v1.8.0
+        with:
+          install_only: true
+      - env:
+          CR_TOKEN: ${{ github.token }}
+          OCI: oci://ghcr.io/${{ github.repository_owner }}/charts
+        run: |
+          charts=$(git ls-files '*Chart.yaml')
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            # branch: prerelease <version>-g<short sha>, no git tag or release
+            for f in $charts; do yq -i ".version += \"-g${GITHUB_SHA::7}\"" "$f"; done
+          fi
+          cr package $(dirname $charts)
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            cr upload -o "$GITHUB_REPOSITORY_OWNER" -r "${GITHUB_REPOSITORY#*/}" \
+              -c "$GITHUB_SHA" --skip-existing --make-release-latest=false
+          fi
+          cr push --registry-url "$OCI" --username "${{ github.actor }}" \
+            --password "$CR_TOKEN" --skip-existing
