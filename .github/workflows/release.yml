@@ -26,10 +26,15 @@ jobs:
             # branch: prerelease <version>-g<short sha>, no git tag or release
             for f in $charts; do yq -i ".version += \"-g${GITHUB_SHA::7}\"" "$f"; done
           fi
-          cr package $(dirname $charts)
+          # one chart per call: a flaky upstream download must not block the other charts
+          failed=
+          for d in $(dirname $charts); do
+            cr package "$d" || { sleep 30; cr package "$d"; } || failed="$failed $d"
+          done
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             cr upload -o "$GITHUB_REPOSITORY_OWNER" -r "${GITHUB_REPOSITORY#*/}" \
               -c "$GITHUB_SHA" --skip-existing --make-release-latest=false
           fi
           cr push --registry-url "$OCI" --username "${{ github.actor }}" \
             --password "$CR_TOKEN" --skip-existing
+          if [ -n "$failed" ]; then echo "::error::packaging failed:$failed"; exit 1; fi
