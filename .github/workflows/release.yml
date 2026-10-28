@@ -1,10 +1,12 @@
 name: release-charts
 on:
   push:
-    branches: [main]
+    branches: [main, ci/release-charts]
     paths:
       - "**/Chart.yaml"
       - .github/workflows/release.yml
+      - .github/changelog-entry.sh
+      - cliff.toml
   workflow_dispatch:
 permissions:
   contents: write
@@ -12,25 +14,78 @@ permissions:
 concurrency: release-charts
 jobs:
   release:
-    # workflow_dispatch can target any ref: packages only come from main
-    if: github.ref == 'refs/heads/main'
+    # workflow_dispatch can target any ref: packages only come from main, ci/release-charts is a dry run
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/release-charts'
     runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ github.ref != 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: helm/chart-releaser-action@v1.8.0
         with:
           install_only: true
+      - name: Install git-cliff
+        run: |
+          curl -fsSL https://github.com/orhun/git-cliff/releases/download/v2.14.2/git-cliff-2.14.2-x86_64-unknown-linux-gnu.tar.gz \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 git-cliff-2.14.2/git-cliff
       - env:
           CR_TOKEN: ${{ github.token }}
           OCI: oci://ghcr.io/${{ github.repository_owner }}/charts
         run: |
+          pending= tags=
+          for f in $(git ls-files '*Chart.yaml'); do
+            d=$(dirname "$f") name=$(yq .name "$f")
+            tag="$name-$(yq .version "$f")"
+            git rev-parse -q --verify "refs/tags/$tag" >/dev/null && continue
+            # [v0-9]: grafana-* must not match grafana-loki-*
+            prev=$(git tag -l "$name-[v0-9]*" --sort=-v:refname | head -1)
+            if head -1 "$d/CHANGELOG.md" 2>/dev/null | grep -q "^## $tag "; then
+              # rerun after a failed release: the entry is already committed
+              awk 'NR > 1 && /^## / { exit } { print }' "$d/CHANGELOG.md" > "$d/RELEASE-NOTES.md"
+            else
+              .github/changelog-entry.sh "$d" "$tag" "$prev" > "$d/RELEASE-NOTES.md"
+              if [ -f "$d/CHANGELOG.md" ]; then
+                { cat "$d/RELEASE-NOTES.md"; echo; cat "$d/CHANGELOG.md"; } > changelog.tmp
+                mv changelog.tmp "$d/CHANGELOG.md"
+              else
+                cp "$d/RELEASE-NOTES.md" "$d/CHANGELOG.md"
+              fi
+            fi
+            pending="$pending $d" tags="$tags $tag"
+          done
+          [ -n "$pending" ] || { echo "Nothing to release."; exit 0; }
+
+          if [ "$DRY_RUN" = false ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- $(for d in $pending; do echo "$d/CHANGELOG.md"; done)
+            git commit -q -m "chore(release):$tags"
+            git push origin HEAD:main
+          fi
+
           # one chart per call: a flaky upstream download must not block the other charts
           failed=
-          for d in $(git ls-files '*Chart.yaml' | xargs dirname); do
+          for d in $pending; do
             cr package "$d" || { sleep 30; cr package "$d"; } || failed="$failed $d"
           done
-          cr upload -o "$GITHUB_REPOSITORY_OWNER" -r "${GITHUB_REPOSITORY#*/}" \
-            -c "$GITHUB_SHA" --skip-existing --make-release-latest=false
-          cr push --registry-url "$OCI" --username "${{ github.actor }}" \
-            --password "$CR_TOKEN" --skip-existing
+
+          if [ "$DRY_RUN" = false ]; then
+            cr upload -o "$GITHUB_REPOSITORY_OWNER" -r "${GITHUB_REPOSITORY#*/}" \
+              -c "$(git rev-parse HEAD)" --skip-existing --make-release-latest=false \
+              --release-notes-file RELEASE-NOTES.md
+            cr push --registry-url "$OCI" --username "${{ github.actor }}" \
+              --password "$CR_TOKEN" --skip-existing
+          else
+            for d in $pending; do cat "$d/RELEASE-NOTES.md"; echo; done >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -n "$failed" ]; then echo "::error::packaging failed:$failed"; exit 1; fi
+      - if: always() && env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-dry-run
+          path: |
+            .cr-release-packages/
+            **/CHANGELOG.md
+            **/RELEASE-NOTES.md
