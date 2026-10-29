@@ -1,7 +1,7 @@
 name: release-charts
 on:
   push:
-    branches: [main, next, ci/release-charts] # ci/release-charts: testing only, removed before the PR
+    branches: [main, next]
   workflow_dispatch:
 permissions: {}
 concurrency:
