@@ -1,92 +1,97 @@
 name: release-charts
 on:
   push:
-    branches: [main, ci/release-charts]
-    paths:
-      - "**/Chart.yaml"
-      - .github/workflows/release.yml
-      - .github/changelog-entry.sh
-      - cliff.toml
+    branches: [main, next, ci/release-charts] # ci/release-charts: testing only, removed before the PR
   workflow_dispatch:
-permissions:
-  contents: write
-  packages: write
-concurrency: release-charts
+permissions: {}
+concurrency:
+  group: release-charts-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  release:
-    # workflow_dispatch can target any ref: packages only come from main, ci/release-charts is a dry run
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/release-charts'
+  charts:
     runs-on: ubuntu-latest
-    env:
-      DRY_RUN: ${{ github.ref != 'refs/heads/main' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      charts: ${{ steps.changed.outputs.charts }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+      # charts whose version changed in the push, as [{chart, name, version, tag}]
+      - id: changed
+        run: |
+          echo "charts=$(git diff --name-only --diff-filter=d -G '^version:' "$BASE" "$GITHUB_SHA" -- '*Chart.yaml' | xargs -r yq -o json -I0 '{"chart": filename | sub("/Chart.yaml$"; ""), "name": .name, "version": .version, "tag": .name + "-" + .version}' | jq -sc .)" >> "$GITHUB_OUTPUT"
+        env:
+          # dispatch: empty tree = all charts; new branch: vs main; otherwise: the commits of this push
+          BASE: ${{ github.event_name == 'workflow_dispatch' && '4b825dc642cb6eb9a060e54bf8d69288fbee4904' || github.event.created && 'origin/main' || github.event.before }}
+
+  release:
+    needs: charts
+    if: github.ref_name == 'main' && needs.charts.outputs.charts != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # tags, Releases
+      packages: write # GHCR
+    strategy:
+      fail-fast: false # a public.ecr.aws 429 on karpenter must not stop the other charts
+      matrix:
+        include: ${{ fromJSON(needs.charts.outputs.charts) }}
+    env:
+      CHART: ${{ matrix.chart }}
+      NAME: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      # previous release of this chart; [v0-9]: grafana-* must not match grafana-loki-*
+      - id: prev
+        run: echo "tag=$(git tag -l "$NAME-[v0-9]*" --no-contains "$GITHUB_SHA" --sort=-v:refname | head -1)" >> "$GITHUB_OUTPUT"
+      - uses: orhun/git-cliff-action@v4.9.1
+        with:
+          args: --include-path ${{ matrix.chart }}/** --tag-pattern ^${{ matrix.name }}-[v0-9] --tag ${{ matrix.tag }} --strip header ${{ steps.prev.outputs.tag && format('{0}..{1}', steps.prev.outputs.tag, github.sha) }}
+        env:
+          OUTPUT: ${{ matrix.chart }}/RELEASE-NOTES.md
       - uses: helm/chart-releaser-action@v1.8.0
         with:
           install_only: true
-      - name: Install git-cliff
-        run: |
-          curl -fsSL https://github.com/orhun/git-cliff/releases/download/v2.14.2/git-cliff-2.14.2-x86_64-unknown-linux-gnu.tar.gz \
-            | sudo tar -xz -C /usr/local/bin --strip-components=1 git-cliff-2.14.2/git-cliff
-      - env:
+      - run: cr package "$CHART"
+      - run: cr upload --config .github/cr.yaml --commit "$GITHUB_SHA"
+        env:
           CR_TOKEN: ${{ github.token }}
-          OCI: oci://ghcr.io/${{ github.repository_owner }}/charts
-        run: |
-          pending= tags=
-          for f in $(git ls-files '*Chart.yaml'); do
-            d=$(dirname "$f") name=$(yq .name "$f")
-            tag="$name-$(yq .version "$f")"
-            git rev-parse -q --verify "refs/tags/$tag" >/dev/null && continue
-            # [v0-9]: grafana-* must not match grafana-loki-*
-            prev=$(git tag -l "$name-[v0-9]*" --sort=-v:refname | head -1)
-            if head -1 "$d/CHANGELOG.md" 2>/dev/null | grep -q "^## $tag "; then
-              # rerun after a failed release: the entry is already committed
-              awk 'NR > 1 && /^## / { exit } { print }' "$d/CHANGELOG.md" > "$d/RELEASE-NOTES.md"
-            else
-              .github/changelog-entry.sh "$d" "$tag" "$prev" > "$d/RELEASE-NOTES.md"
-              if [ -f "$d/CHANGELOG.md" ]; then
-                { cat "$d/RELEASE-NOTES.md"; echo; cat "$d/CHANGELOG.md"; } > changelog.tmp
-                mv changelog.tmp "$d/CHANGELOG.md"
-              else
-                cp "$d/RELEASE-NOTES.md" "$d/CHANGELOG.md"
-              fi
-            fi
-            pending="$pending $d" tags="$tags $tag"
-          done
-          [ -n "$pending" ] || { echo "Nothing to release."; exit 0; }
+      - run: cr push --config .github/cr.yaml --username "$GITHUB_ACTOR" --password "$CR_TOKEN"
+        env:
+          CR_TOKEN: ${{ github.token }}
 
-          if [ "$DRY_RUN" = false ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -- $(for d in $pending; do echo "$d/CHANGELOG.md"; done)
-            git commit -q -m "chore(release):$tags"
-            git push origin HEAD:main
-          fi
-
-          # one chart per call: a flaky upstream download must not block the other charts
-          failed=
-          for d in $pending; do
-            cr package "$d" || { sleep 30; cr package "$d"; } || failed="$failed $d"
-          done
-
-          if [ "$DRY_RUN" = false ]; then
-            cr upload -o "$GITHUB_REPOSITORY_OWNER" -r "${GITHUB_REPOSITORY#*/}" \
-              -c "$(git rev-parse HEAD)" --skip-existing --make-release-latest=false \
-              --release-notes-file RELEASE-NOTES.md
-            cr push --registry-url "$OCI" --username "${{ github.actor }}" \
-              --password "$CR_TOKEN" --skip-existing
-          else
-            for d in $pending; do cat "$d/RELEASE-NOTES.md"; echo; done >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ -n "$failed" ]; then echo "::error::packaging failed:$failed"; exit 1; fi
-      - if: always() && env.DRY_RUN == 'true'
-        uses: actions/upload-artifact@v7
+  next:
+    needs: charts
+    if: github.ref_name != 'main' && needs.charts.outputs.charts != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write # GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.charts.outputs.charts) }}
+    env:
+      CHART: ${{ matrix.chart }}
+      VERSION: ${{ matrix.version }}-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
         with:
-          name: release-dry-run
-          include-hidden-files: true # .cr-release-packages/
-          path: |
-            .cr-release-packages/
-            **/CHANGELOG.md
-            **/RELEASE-NOTES.md
+          persist-credentials: false
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: v4.3.1
+      - uses: docker/login-action@v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - run: helm package "$CHART" --dependency-update --version "$VERSION" --destination dist
+      - run: helm push dist/*.tgz "oci://ghcr.io/$GITHUB_REPOSITORY_OWNER/charts"
