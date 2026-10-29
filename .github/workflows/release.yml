@@ -20,13 +20,20 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # charts whose version changed in the push, as [{chart, name, version, tag}]
+      # charts with a changed file in the push, as [{chart, name}]
       - id: changed
         run: |
-          echo "charts=$(git diff --name-only --diff-filter=d -G '^version:' "$BASE" "$GITHUB_SHA" -- '*Chart.yaml' | xargs -r yq -o json -I0 '{"chart": filename | sub("/Chart.yaml$"; ""), "name": .name, "version": .version, "tag": .name + "-" + .version}' | jq -sc .)" >> "$GITHUB_OUTPUT"
+          git diff --dirstat=files,0,cumulative "$BASE" "$GITHUB_SHA" \
+            | awk '{print $2 "Chart.yaml"}' \
+            | grep -Fxf <(git ls-files '*Chart.yaml') \
+            | xargs -r yq -o json -I0 '{"chart": filename | sub("/Chart.yaml$"; ""), "name": .name}' \
+            | jq -sc --arg tags "$(git tag -l)" "$KEEP" \
+            | sed 's/^/charts=/' >> "$GITHUB_OUTPUT"
         env:
           # dispatch: empty tree = all charts; new branch: vs main; otherwise: the commits of this push
           BASE: ${{ github.event_name == 'workflow_dispatch' && '4b825dc642cb6eb9a060e54bf8d69288fbee4904' || github.event.created && 'origin/main' || github.event.before }}
+          # dispatch: only charts without their first release <name>-1.0.0
+          KEEP: ${{ github.event_name == 'workflow_dispatch' && 'map(select(.name + "-1.0.0" | IN($tags | splits("\n")) | not))' || '.' }}
 
   release:
     needs: charts
@@ -47,18 +54,25 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      # previous release of this chart; [v0-9]: grafana-* must not match grafana-loki-*
-      - id: prev
-        run: echo "tag=$(git tag -l "$NAME-[v0-9]*" --no-contains "$GITHUB_SHA" --sort=-v:refname | head -1)" >> "$GITHUB_OUTPUT"
-      - uses: orhun/git-cliff-action@v4.9.1
+      # version = last tag bumped from the chart's commits, 1.0.0 for the first release; [v0-9]: grafana-* must not match grafana-loki-*
+      - id: cliff
+        uses: orhun/git-cliff-action@v4.9.1
         with:
-          args: --include-path ${{ matrix.chart }}/** --tag-pattern ^${{ matrix.name }}-[v0-9] --tag ${{ matrix.tag }} --strip header ${{ steps.prev.outputs.tag && format('{0}..{1}', steps.prev.outputs.tag, github.sha) }}
+          args: --bump --unreleased --include-path ${{ matrix.chart }}/** --tag-pattern ^${{ matrix.name }}-[v0-9] --strip header
         env:
           OUTPUT: ${{ matrix.chart }}/RELEASE-NOTES.md
+          GIT_CLIFF__BUMP__INITIAL_TAG: ${{ matrix.name }}-1.0.0
+      # nothing to bump gives an existing tag back: fail rather than overwrite it
+      - run: test -z "$(git tag -l "$TAG")"
+        env:
+          TAG: ${{ steps.cliff.outputs.version }}
       - uses: helm/chart-releaser-action@v1.8.0
         with:
           install_only: true
-      - run: cr package "$CHART"
+      # the version comes from the tag only, Chart.yaml is never edited
+      - run: helm package "$CHART" --dependency-update --version "${TAG#"$NAME"-}" --destination .cr-release-packages
+        env:
+          TAG: ${{ steps.cliff.outputs.version }}
       - run: cr upload --config .github/cr.yaml --commit "$GITHUB_SHA"
         env:
           CR_TOKEN: ${{ github.token }}
@@ -80,7 +94,7 @@ jobs:
         include: ${{ fromJSON(needs.charts.outputs.charts) }}
     env:
       CHART: ${{ matrix.chart }}
-      VERSION: ${{ matrix.version }}-${{ github.sha }}
+      VERSION: 0.0.0-${{ github.sha }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
