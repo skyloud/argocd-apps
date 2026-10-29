@@ -80,7 +80,7 @@ jobs:
         include: ${{ fromJSON(needs.charts.outputs.charts) }}
     env:
       CHART: ${{ matrix.chart }}
-      VERSION: ${{ matrix.version }}-${{ github.sha }}
+      VERSION: ${{ matrix.version }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -93,5 +93,5 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - run: helm package "$CHART" --dependency-update --version "$VERSION" --destination dist
+      - run: helm package "$CHART" --dependency-update --version "$VERSION-$(git rev-parse --short HEAD)" --destination dist
       - run: helm push dist/*.tgz "oci://ghcr.io/$GITHUB_REPOSITORY_OWNER/charts"

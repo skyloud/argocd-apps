@@ -11,5 +11,5 @@ paths: [".github/**", "cliff.toml"]
 - One job per target with a job-level `if:`, no per-step `if:`.
 - No commit or push from CI.
 - Releases: only `main`, only on a `version:` bump in `Chart.yaml`. Never overwrite a published version.
-- `next` branch: only `charts/<name>:<version>-<sha>`. No tag, no Release.
+- `next` branch: only `charts/<name>:<version>-<short sha>`. No tag, no Release.
 - A failed release: "Re-run failed jobs". Catch-up: `workflow_dispatch` on `main`.
