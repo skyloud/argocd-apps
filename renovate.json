@@ -22,30 +22,6 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Wrapper chart version mirrors its dependency (https repositories)",
-      "managerFilePatterns": [
-        "/(^|/)Chart\\.yaml$/"
-      ],
-      "matchStrings": [
-        "(?m)^version: (?<currentValue>\\S+)\\n[\\s\\S]*?dependencies:\\n\\s+- name: (?<depName>\\S+)\\n\\s+version: \\S+\\n\\s+repository: \"?(?<registryUrl>https[^\"\\n]+)\"?"
-      ],
-      "datasourceTemplate": "helm",
-      "extractVersionTemplate": "^v?(?<version>.+)$"
-    },
-    {
-      "customType": "regex",
-      "description": "Wrapper chart version mirrors its dependency (OCI repositories)",
-      "managerFilePatterns": [
-        "/(^|/)Chart\\.yaml$/"
-      ],
-      "matchStrings": [
-        "(?m)^version: (?<currentValue>\\S+)\\n[\\s\\S]*?dependencies:\\n\\s+- name: (?<depName>\\S+)\\n\\s+version: \\S+\\n\\s+repository: \"?oci://(?<packageName>[^\"\\n]+)\"?"
-      ],
-      "datasourceTemplate": "docker",
-      "packageNameTemplate": "{{{packageName}}}/{{{depName}}}"
-    },
-    {
-      "customType": "regex",
       "description": "Tool versions downloaded by the argocd skyloud plugin",
       "managerFilePatterns": [
         "/^argoproj/argo-cd/plugins/skyloud\\.yaml$/"
@@ -67,6 +43,13 @@
         "docker"
       ],
       "versioning": "helm"
+    },
+    {
+      "description": "A dependency major releases a wrapper major (git-cliff in release-charts)",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "commitMessagePrefix": "chore(deps)!:"
     }
   ]
 }
