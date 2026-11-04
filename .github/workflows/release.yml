@@ -20,12 +20,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # charts with a changed file in the push, as [{chart, name}]
+      # charts (<org>/<chart>/) with a changed file in the push, as [{chart, name}]
       - id: changed
         run: |
-          git diff --dirstat=files,0,cumulative "$BASE" "$GITHUB_SHA" \
-            | awk '{print $2 "Chart.yaml"}' \
-            | grep -Fxf <(git ls-files '*Chart.yaml') \
+          git diff --name-only "$BASE" "$GITHUB_SHA" \
+            | sed -nE 's|^([^/]+/[^/]+)/.*|\1/Chart.yaml|p' | xargs -r git ls-files -- \
             | xargs -r yq -o json -I0 '{"chart": filename | sub("/Chart.yaml$"; ""), "name": .name}' \
             | jq -sc --arg tags "$(git tag -l)" "$KEEP" \
             | sed 's/^/charts=/' >> "$GITHUB_OUTPUT"
