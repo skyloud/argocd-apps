@@ -92,6 +92,20 @@ spec:
               value: "9999"
             - name: API_EXTERNAL_URL
               value: {{ .Values.kong.publicUrl | default (include "supabase.internalKongUrl" .) | quote }}
+            # API_EXTERNAL_URL is the Kong root, so GoTrue's default "/verify"
+            # path builds email links (invite, signup, recovery, email change,
+            # and the action_link returned by admin generateLink) such as
+            # https://<publicUrl>/verify?token=..., which Kong does not route
+            # (404). Kong exposes GoTrue under /auth/v1, as in Supabase's
+            # docker-compose.
+            - name: GOTRUE_MAILER_URLPATHS_INVITE
+              value: "/auth/v1/verify"
+            - name: GOTRUE_MAILER_URLPATHS_CONFIRMATION
+              value: "/auth/v1/verify"
+            - name: GOTRUE_MAILER_URLPATHS_RECOVERY
+              value: "/auth/v1/verify"
+            - name: GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE
+              value: "/auth/v1/verify"
             - name: GOTRUE_SITE_URL
               value: {{ .Values.auth.siteUrl | quote }}
             {{- with .Values.auth.additionalRedirectUrls }}
