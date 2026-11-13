@@ -1,0 +1,21 @@
+[changelog]
+body = """
+## {{ version }} ({{ timestamp | date(format="%Y-%m-%d") }})
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for c in commits %}- {% if c.scope %}**{{ c.scope }}:** {% endif %}{{ c.message | split(pat="\n") | first | trim }} ({{ c.id | truncate(length=7, end="") }})
+{% endfor %}{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+commit_parsers = [
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^Merge ", skip = true },
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Bug fixes" },
+  { message = "^chore\\(deps\\)", group = "<!-- 2 -->Dependencies" },
+  { message = ".*", group = "<!-- 3 -->Other" },
+]
