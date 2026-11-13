@@ -6,7 +6,6 @@
     ":ignoreUnstable"
   ],
   "semanticCommits": "enabled",
-  "minimumReleaseAge": "3 days",
   "ignorePaths": [
     ".claude/**"
   ],
