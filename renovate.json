@@ -6,6 +6,7 @@
     ":ignoreUnstable"
   ],
   "semanticCommits": "enabled",
+  "minimumReleaseAge": "3 days",
   "ignorePaths": [
     ".claude/**"
   ],
@@ -51,15 +52,17 @@
       "commitMessagePrefix": "chore(deps)!:"
     },
     {
-      "description": "Minor/patch land on main as commits once lint-charts is green; majors stay PRs merged by hand",
+      "description": "Minor/patch/digest/pin grouped in one PR, auto-merged once lint-charts is green; majors stay PRs merged by hand",
       "matchUpdateTypes": [
         "minor",
         "patch",
         "digest",
-        "pin"
+        "pin",
+        "pinDigest"
       ],
-      "automerge": true,
-      "automergeType": "branch"
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch",
+      "automerge": true
     }
   ]
 }
