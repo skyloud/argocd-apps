@@ -54,10 +54,11 @@ jobs:
         with:
           fetch-depth: 0
       # version = last tag bumped from the chart's commits, 1.0.0 for the first release; [v0-9]: grafana-* must not match grafana-loki-*
+      # quoted: the action pastes args unquoted into a bash line, which would glob them into file names
       - id: cliff
         uses: orhun/git-cliff-action@v4.9.1
         with:
-          args: --bump --unreleased --include-path ${{ matrix.chart }}/** --tag-pattern ^${{ matrix.name }}-[v0-9] --strip header
+          args: --bump --unreleased --include-path '${{ matrix.chart }}/**' --tag-pattern '^${{ matrix.name }}-[v0-9]' --strip header
         env:
           OUTPUT: ${{ matrix.chart }}/RELEASE-NOTES.md
           GIT_CLIFF__BUMP__INITIAL_TAG: ${{ matrix.name }}-1.0.0
