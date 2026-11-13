@@ -1,6 +1,0 @@
-# values the chart requires (no defaults on purpose)
-jwt:
-  secretName: ci
-functionsCode:
-  image:
-    reference: ci
