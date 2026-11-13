@@ -1,0 +1,4 @@
+# helm template needs a Loki schema; test schema, no persistence
+app:
+  loki:
+    useTestSchema: true

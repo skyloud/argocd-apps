@@ -1,0 +1,5 @@
+# values the chart requires (no defaults on purpose)
+app:
+  monitoringPasscode: ci
+  community:
+    enabled: true

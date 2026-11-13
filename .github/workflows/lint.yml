@@ -1,0 +1,30 @@
+name: lint-charts
+# Renovate merges a minor into main (automergeType=branch) only when this is green
+on:
+  push:
+    branches: ['renovate/**']
+permissions: {}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: v4.3.1
+      # charts (<org>/<chart>/) changed vs main; Renovate force-pushes on rebase, so not github.event.before
+      # .github/ci-values/<org>/<chart>.yaml: values a chart requires to render, kept out of the chart so they're not packaged
+      - run: |
+          git diff --name-only origin/main...HEAD \
+            | sed -nE 's|^([^/]+/[^/]+)/.*|\1/Chart.yaml|p' | sort -u | xargs -r git ls-files -- \
+            | xargs -rn1 dirname | while read -r chart; do
+                values=".github/ci-values/$chart.yaml"
+                [ -f "$values" ] || values=/dev/null
+                helm dependency update "$chart" && helm lint "$chart" -f "$values" && helm template "$chart" -f "$values" >/dev/null || exit 1
+              done
