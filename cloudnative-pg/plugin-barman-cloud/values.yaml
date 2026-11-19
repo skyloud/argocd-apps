@@ -1,0 +1,5 @@
+# Barman Cloud CNPG-I plugin (backups/WAL archiving to object storage).
+# Requires cert-manager and CNPG operator >= 1.26. Deploy it in the SAME
+# namespace as the operator: the operator discovers plugins through Services
+# in its own namespace.
+app: {}
