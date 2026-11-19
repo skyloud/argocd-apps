@@ -316,6 +316,58 @@ Two things to decide before enabling, rather than after:
   Often exactly what an audit wants — but only turn it on if that destination
   is treated as holding sensitive data.
 
+## Backups & restore (Barman Cloud)
+
+Off by default. When on, CNPG archives every WAL segment and takes scheduled
+base backups to S3 through the barman-cloud CNPG-I plugin.
+
+**Prerequisites** (not in this chart): cert-manager, the CNPG operator >= 1.26
+(`cloudnative-pg/cloudnative-pg`) and the plugin (`cloudnative-pg/plugin-barman-cloud`)
+deployed in the **operator's namespace**, and write access to the bucket for the
+Cluster's service account (named after the Cluster, e.g. `supabase-postgres`)
+via EKS Pod Identity / IRSA, or a credentials Secret.
+
+```yaml
+cnpg:
+  backup:
+    enabled: true
+    schedule: "0 0 2 * * *"            # 6 fields, seconds first
+    objectStore:
+      destinationPath: s3://my-bucket/  # chart creates ObjectStore <cluster>-backup
+      retentionPolicy: 30d
+      # credentialsSecret: s3-creds     # else inheritFromIAMRole
+```
+
+Check: the Cluster condition `ContinuousArchiving=True`, `kubectl get backups`
+shows `completed`, and `<serverName>/wals/` and `<serverName>/base/` appear
+in the bucket.
+
+### Restore
+
+CNPG never restores in place: a restore **creates a new cluster** from a base
+backup and replays WAL up to the target.
+
+```yaml
+cnpg:
+  bootstrap:
+    mode: recovery
+    recovery:
+      serverName: supabase-postgres          # folder to restore FROM
+      targetTime: "2026-11-17T09:30:00Z"     # optional; omit = latest
+  backup:
+    enabled: true
+    serverName: supabase-postgres-r1         # NEW folder to archive TO
+```
+
+The chart fails to render if both server names are equal (CNPG would refuse a
+non-empty WAL archive). Under ArgoCD auto-sync, **apply these values first,
+then delete the Cluster and its PVCs**: ArgoCD recreates it in recovery mode.
+Deleting first lets ArgoCD recreate an empty `initdb` cluster. Keep the cluster
+name unchanged (its credentials Secrets are named after it); only `serverName`
+moves. Leave `mode: recovery` in place afterwards: bootstrap is only read at
+creation. `files/supabase-init/` does not run on a restore (the schema comes
+from the backup); the migrations Job does, so it must stay idempotent.
+
 ## Known limitations
 
 - **Storage local-disk backend** (`storage.s3.enabled: false`, the default)

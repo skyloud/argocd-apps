@@ -96,9 +96,25 @@ cnpg:
   superuserSecret:
     name: ""
   bootstrap:
+    # initdb   = new empty cluster (default).
+    # recovery = rebuild from a Barman Cloud backup (see `recovery` below and
+    #            the README "Backups & restore" runbook). Only read when the
+    #            Cluster is CREATED; harmless on a running cluster.
+    mode: initdb
     initdb:
       secret:
         name: ""
+    recovery:
+      # ObjectStore to restore FROM. Empty = the backup ObjectStore
+      # (cnpg.backup.objectName, or `<cluster>-backup` created by this chart).
+      # Set it explicitly when restoring with cnpg.backup.enabled=false.
+      objectName: ""
+      # Bucket folder (serverName) of the cluster being restored. Required.
+      # Must differ from cnpg.backup.serverName: the restored cluster archives
+      # into a NEW folder, CNPG refuses a non-empty WAL archive.
+      serverName: ""
+      # RFC 3339 timestamp for point-in-time recovery. Empty = latest WAL.
+      targetTime: ""
   # Keeps the "app" role's password in sync with postgres.appSecret /
   # bootstrap.initdb.secret AFTER first bootstrap. Without this, CNPG only
   # ever reads that Secret once (at initdb) — rotating it externally (e.g. an
@@ -225,10 +241,33 @@ cnpg:
   monitoring:
     # Requires the monitoring.coreos.com/v1 CRDs (Prometheus Operator).
     enablePodMonitor: false
+  # Barman Cloud backups: continuous WAL archiving + scheduled base backups to
+  # object storage. Requires the barman-cloud plugin (cloudnative-pg/
+  # plugin-barman-cloud, CNPG operator >= 1.26, cert-manager).
   backup:
     enabled: false
-    # Name of a pre-deployed ObjectStore CR (barmancloud.cnpg.io/v1).
+    # Use a pre-deployed ObjectStore CR (barmancloud.cnpg.io/v1). Empty = this
+    # chart creates `<cluster>-backup` from `objectStore` below.
     objectName: ""
+    # Bucket folder this cluster archives into. Empty = cluster name. Change it
+    # after every restore (see cnpg.bootstrap.recovery.serverName).
+    serverName: ""
+    # CNPG cron, 6 fields (seconds first). Empty = no ScheduledBackup (WAL
+    # archiving only, which is NOT restorable without a base backup).
+    schedule: "0 0 2 * * *"
+    objectStore:
+      # s3://bucket/prefix. Required when the chart creates the ObjectStore.
+      destinationPath: ""
+      # Non-AWS S3 only (Scaleway, MinIO...).
+      endpointURL: ""
+      # Secret in the postgres namespace with ACCESS_KEY_ID / ACCESS_SECRET_KEY.
+      # Empty = inheritFromIAMRole (EKS Pod Identity / IRSA on the Cluster's
+      # service account, which CNPG names after the Cluster).
+      credentialsSecret: ""
+      # XXd / XXw / XXm.
+      retentionPolicy: "30d"
+      walCompression: gzip
+      dataCompression: gzip
   resources: {}
   nodeSelector: {}
   tolerations: []

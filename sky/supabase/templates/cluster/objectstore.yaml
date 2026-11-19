@@ -1,0 +1,47 @@
+{{- /*
+Barman Cloud ObjectStore the CNPG Cluster archives WAL and base backups to.
+Only rendered when this chart owns it (cnpg.backup.objectName empty). The CRD
+comes from the barman-cloud plugin: install it before enabling backups.
+
+sync-wave -1: must exist before the Cluster (wave 0) references it.
+*/}}
+{{- if and .Values.cnpg.enabled .Values.cnpg.backup.enabled (not .Values.cnpg.backup.objectName) }}
+{{- $os := .Values.cnpg.backup.objectStore }}
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ include "supabase.backupObjectName" . }}
+  namespace: {{ include "supabase.postgresNamespace" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  {{- with $os.retentionPolicy }}
+  retentionPolicy: {{ . | quote }}
+  {{- end }}
+  configuration:
+    destinationPath: {{ required "cnpg.backup.objectStore.destinationPath is required when cnpg.backup.enabled=true and cnpg.backup.objectName is empty" $os.destinationPath | quote }}
+    {{- with $os.endpointURL }}
+    endpointURL: {{ . | quote }}
+    {{- end }}
+    s3Credentials:
+      {{- with $os.credentialsSecret }}
+      accessKeyId:
+        name: {{ . | quote }}
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: {{ . | quote }}
+        key: ACCESS_SECRET_KEY
+      {{- else }}
+      inheritFromIAMRole: true
+      {{- end }}
+    {{- with $os.walCompression }}
+    wal:
+      compression: {{ . }}
+    {{- end }}
+    {{- with $os.dataCompression }}
+    data:
+      compression: {{ . }}
+    {{- end }}
+{{- end }}

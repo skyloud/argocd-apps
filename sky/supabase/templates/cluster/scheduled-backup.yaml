@@ -1,0 +1,24 @@
+{{- /*
+Scheduled base backups through the barman-cloud plugin. WAL archiving alone
+cannot be restored: recovery always starts from a base backup, then replays
+WAL. `immediate` takes the first one as soon as this is created.
+*/}}
+{{- if and .Values.cnpg.enabled .Values.cnpg.backup.enabled .Values.cnpg.backup.schedule }}
+{{- $name := include "supabase.cnpgClusterName" . }}
+apiVersion: {{ .Values.cnpg.apiVersion }}
+kind: ScheduledBackup
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "supabase.postgresNamespace" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cnpg.backup.schedule | quote }}
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: {{ $name }}
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}

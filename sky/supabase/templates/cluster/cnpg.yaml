@@ -60,6 +60,8 @@ spec:
   latter wins if both are set; usually you only need to set the former —
   every consuming service already reads it as the "app" credentials).
   */}}
+  {{- $mode := .Values.cnpg.bootstrap.mode | default "initdb" }}
+  {{- if eq $mode "initdb" }}
   bootstrap:
     initdb:
       database: {{ include "supabase.dbName" . | quote }}
@@ -68,6 +70,41 @@ spec:
       secret:
         name: {{ . | quote }}
       {{- end }}
+  {{- else if eq $mode "recovery" }}
+  {{- /*
+  Rebuild from a Barman Cloud backup. CNPG never restores in place: this only
+  applies when the Cluster is created. The restored cluster must archive into
+  a different serverName than the one it reads from, or CNPG refuses to start
+  (non-empty WAL archive) — checked here so it fails at render time.
+  */}}
+  {{- $rec := .Values.cnpg.bootstrap.recovery }}
+  {{- $source := required "cnpg.bootstrap.recovery.serverName is required when cnpg.bootstrap.mode=recovery" $rec.serverName }}
+  {{- if and .Values.cnpg.backup.enabled (eq $source (include "supabase.backupServerName" .)) }}
+  {{- fail (printf "cnpg.bootstrap.recovery.serverName and cnpg.backup.serverName are both %q: set cnpg.backup.serverName to a new folder for the restored cluster" $source) }}
+  {{- end }}
+  bootstrap:
+    recovery:
+      source: origin
+      database: {{ include "supabase.dbName" . | quote }}
+      owner: "app"
+      {{- with $appSecret }}
+      secret:
+        name: {{ . | quote }}
+      {{- end }}
+      {{- with $rec.targetTime }}
+      recoveryTarget:
+        targetTime: {{ . | quote }}
+      {{- end }}
+  externalClusters:
+    - name: origin
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: {{ default (include "supabase.backupObjectName" .) $rec.objectName | quote }}
+          serverName: {{ $source | quote }}
+  {{- else }}
+  {{- fail (printf "cnpg.bootstrap.mode must be initdb or recovery, got %q" $mode) }}
+  {{- end }}
 
   {{- /*
   CNPG only reads bootstrap.initdb.secret ONCE, at initdb. Without this,
@@ -155,7 +192,8 @@ spec:
       enabled: true
       isWALArchiver: true
       parameters:
-        barmanObjectName: {{ required "cnpg.backup.objectName is required when cnpg.backup.enabled=true" .Values.cnpg.backup.objectName | quote }}
+        barmanObjectName: {{ include "supabase.backupObjectName" . | quote }}
+        serverName: {{ include "supabase.backupServerName" . | quote }}
   {{- end }}
 
   monitoring:

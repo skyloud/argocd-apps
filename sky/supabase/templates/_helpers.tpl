@@ -43,6 +43,16 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default (printf "%s-postgres" .Release.Name) .Values.cnpg.name -}}
 {{- end }}
 
+{{/* Barman Cloud ObjectStore the Cluster archives to: the given one, or the one this chart creates. */}}
+{{- define "supabase.backupObjectName" -}}
+{{- default (printf "%s-backup" (include "supabase.cnpgClusterName" .)) .Values.cnpg.backup.objectName -}}
+{{- end }}
+
+{{/* Bucket folder the Cluster archives into. */}}
+{{- define "supabase.backupServerName" -}}
+{{- default (include "supabase.cnpgClusterName" .) .Values.cnpg.backup.serverName -}}
+{{- end }}
+
 {{/* ==========================================================================
      Postgres namespace — normally the same namespace as everything else in
      this release. Set `postgres.namespace` to place the CNPG Cluster (and
