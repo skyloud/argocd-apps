@@ -1,0 +1,27 @@
+name: lint-charts
+# Renovate merges a minor into main (automergeType=branch) only when this is green
+on:
+  push:
+    branches: ['renovate/**']
+permissions: {}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: v4.3.1
+      # charts (<org>/<chart>/) changed vs main; Renovate force-pushes on rebase, so not github.event.before
+      - run: |
+          git diff --name-only origin/main...HEAD \
+            | sed -nE 's|^([^/]+/[^/]+)/.*|\1/Chart.yaml|p' | sort -u | xargs -r git ls-files -- \
+            | xargs -rn1 dirname | while read -r chart; do
+                helm dependency update "$chart" && helm lint "$chart" || exit 1
+              done
