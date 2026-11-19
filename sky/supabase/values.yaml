@@ -69,6 +69,13 @@ cnpg:
   # already-updated replica before restarting the primary — near-zero write
   # downtime. Requires instances > 1 to have any effect.
   primaryUpdateMethod: switchover
+  # PodDisruptionBudgets gérés par CNPG (défaut de l'opérateur : true). Avec
+  # `instances: 1`, le PDB du primaire n'autorise aucune interruption : tout
+  # drainage du nœud qui le porte reste bloqué (remplacement par dérive
+  # Karpenter, consolidation, mise à jour d'AMI). Le passer à false accepte
+  # une coupure de la base le temps que le pod redémarre ailleurs sur son PVC.
+  # À laisser à true dès que instances > 1.
+  enablePDB: true
   image:
     # supabase/postgres + a 1-line uid fix (26, the Debian/PGDG convention
     # CNPG's instance manager hardcodes) so it boots under CNPG - see
