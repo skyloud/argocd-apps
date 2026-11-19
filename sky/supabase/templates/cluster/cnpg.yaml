@@ -176,9 +176,10 @@ spec:
   # Separer les deux borne le rayon d'action : une derive cote donnees ne peut
   # plus empecher le demarrage, et inversement.
   #
-  # ⚠️ A DECIDER A LA CREATION DU CLUSTER. Ajouter walStorage a un cluster en
-  # service impose de reconstruire chaque instance (un PVC ne se redimensionne
-  # pas a la baisse et ne se scinde pas). Le mettre des le depart ne coute rien.
+  # Avec CNPG >= 1.30, l'ajouter a un cluster en service fonctionne : un
+  # redemarrage par instance, pg_wal deplace sur le nouveau volume (teste en
+  # sandbox le 2026-11-19). Avant 1.30 il fallait reconstruire chaque instance.
+  # Le mettre des la creation evite ce redemarrage.
   walStorage:
     size: {{ .Values.cnpg.walStorage.size }}
     {{- with (default .Values.cnpg.storage.storageClass .Values.cnpg.walStorage.storageClass) }}

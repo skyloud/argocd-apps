@@ -342,6 +342,13 @@ Check: the Cluster condition `ContinuousArchiving=True`, `kubectl get backups`
 shows `completed`, and `<serverName>/wals/` and `<serverName>/base/` appear
 in the bucket.
 
+Enabling backups restarts each instance once (the plugin sidecar is injected).
+Alert on the `ContinuousArchiving` condition going `False`
+(`ContinuousArchivingFailing`), not on `pg_stat_archiver.failed_count > 0`: a
+few failures at every pod start, before the sidecar is ready, are normal and
+retried. With CNPG >= 1.30, enabling `cnpg.walStorage` on a running cluster also
+works (one restart, `pg_wal` moved to the new volume), no rebuild needed.
+
 ### Restore
 
 CNPG never restores in place: a restore **creates a new cluster** from a base
@@ -360,13 +367,36 @@ cnpg:
 ```
 
 The chart fails to render if both server names are equal (CNPG would refuse a
-non-empty WAL archive). Under ArgoCD auto-sync, **apply these values first,
-then delete the Cluster and its PVCs**: ArgoCD recreates it in recovery mode.
-Deleting first lets ArgoCD recreate an empty `initdb` cluster. Keep the cluster
-name unchanged (its credentials Secrets are named after it); only `serverName`
-moves. Leave `mode: recovery` in place afterwards: bootstrap is only read at
-creation. `files/supabase-init/` does not run on a restore (the schema comes
-from the backup); the migrations Job does, so it must stay idempotent.
+non-empty WAL archive). `serverName` must be the folder the cluster **currently**
+archives into (see its `plugins[].parameters.serverName`), not the original one.
+
+Order under ArgoCD auto-sync (tested; the other orders lose data or restore an
+empty cluster):
+
+1. Optionally `SELECT pg_switch_wal();` so the last writes are archived.
+2. **Pause auto-sync** on the Application (remove `spec.syncPolicy.automated`).
+   Do *not* push the new values first: the running cluster would immediately
+   switch its archive to the new `serverName`, so the restore source misses the
+   last WAL, and the new folder is no longer empty for the restored cluster.
+   Deleting with auto-sync on recreates an empty `initdb` cluster instead.
+3. Delete the Cluster, then its PVCs (`-l cnpg.io/cluster=<name>`).
+4. Apply the recovery values and re-enable auto-sync (the Terraform module does
+   both): ArgoCD recreates the Cluster in recovery mode.
+5. Restart the app Deployments (auth, rest, storage, realtime, pgdog): their
+   pooled connections point at the old instance and fail their first request.
+
+Keep the cluster name unchanged (its credentials Secrets are named after it);
+only `serverName` moves. Leave `mode: recovery` in place afterwards: bootstrap
+is only read at creation. `files/supabase-init/` does not run on a restore (the
+schema comes from the backup); the migrations Job does, so it must stay
+idempotent.
+
+Measured on a 1-instance sandbox (160 MB): point-in-time restore into a new
+cluster ~1.5 min; in-place restore ~2 min of write outage after the old pod
+stops. Stopping an instance takes up to `smartShutdownTimeout` (CNPG default
+180 s) while clients stay connected, so expect ~3 min of downtime for every
+planned restart of a single-instance cluster (operator upgrade, enabling
+backups, adding walStorage).
 
 ## Known limitations
 
