@@ -1,0 +1,3 @@
+# Gateway API standard-install.yaml, vendored from the release matching appVersion.
+# Nothing to configure. The ArgoCD Application needs syncOptions: [ServerSideApply=true]:
+# the CRDs exceed the 256KB last-applied-configuration annotation of client-side apply.
