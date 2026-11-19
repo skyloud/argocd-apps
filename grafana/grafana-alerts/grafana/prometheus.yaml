@@ -36,9 +36,21 @@ spec:
 
     - alert: PrometheusScrapeJobMissing
       expr: |
-        count by (job, env, tenant_id) (count_over_time(up[1h]))
-        unless
-        count by (job, env, tenant_id) (up)
+        (
+          count by (job, namespace, service, env, tenant_id) (count_over_time(up{service!=""}[1h]))
+          unless
+          count by (job, namespace, service, env, tenant_id) (up{service!=""})
+        )
+        and on (namespace, service, env, tenant_id)
+          count by (namespace, service, env, tenant_id) (
+            label_replace(kube_endpoint_address, "service", "$1", "endpoint", "(.+)")
+          )
+        or
+        (
+          count by (job, env, tenant_id) (count_over_time(up{service=""}[1h]))
+          unless
+          count by (job, env, tenant_id) (up{service=""})
+        )
       for: 15m
       labels:
         alertowner: skyloud
@@ -47,7 +59,7 @@ spec:
         tenant_id: "{{ $labels.tenant_id }}"
         env: "{{ $labels.env }}"
         summary: "Scrape job {{ $labels.job }} has no target left"
-        description: "Job {{ $labels.job }} produced up series during the last hour but has none right now: its service discovery returns nothing, or the job was disabled in Alloy. PrometheusTargetMissing* cannot detect this because the series disappear instead of going to 0. The alert clears on its own one hour after an intentional removal."
+        description: "Job {{ $labels.job }} produced up series during the last hour but has none right now: its service discovery returns nothing, or the job was disabled in Alloy. PrometheusTargetMissing* cannot detect this because the series disappear instead of going to 0. For a job discovered through a Service, it only fires while that Service still has endpoints: a Service deleted or scaled to zero is an intentional removal."
 
     - alert: Watchdog
       expr: vector(1)
