@@ -273,13 +273,13 @@ pgdog:
     postgres: 5
   image:
     repository: ghcr.io/pgdogdev/pgdog
-    tag: "v0.1.52"
+    tag: "v0.1.66"
     pullPolicy: IfNotPresent
   # Renders users.toml from Secrets at pod start (never written to a ConfigMap
   # in plaintext).
   initImage:
     repository: busybox
-    tag: "1.36"
+    tag: "1.38"
     pullPolicy: IfNotPresent
   appDbSecretName: ""
   superuserSecretName: ""
@@ -629,7 +629,7 @@ kong:
   publicUrl: ""
   image:
     repository: kong
-    tag: "3.8"
+    tag: "3.9"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # Upstream timeouts in ms for the two routes whose requests legitimately run
@@ -706,7 +706,7 @@ auth:
   replicaCount: 1
   image:
     repository: supabase/gotrue
-    tag: "v2.170.0"
+    tag: "v2.198.0"
     pullPolicy: IfNotPresent
     pullSecrets: []
   siteUrl: ""
@@ -757,7 +757,7 @@ rest:
   replicaCount: 1
   image:
     repository: postgrest/postgrest
-    tag: "v12.2.3"
+    tag: "v12.2.12"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # Schemas exposed over the REST API.
@@ -806,7 +806,7 @@ realtime:
   replicaCount: 1
   image:
     repository: supabase/realtime
-    tag: "v2.34.40"
+    tag: "v2.174.0"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # External ID for this Realtime "tenant" (multi-tenant mode is used even
@@ -861,7 +861,7 @@ storage:
   replicaCount: 1
   image:
     repository: supabase/storage-api
-    tag: "v1.11.13"
+    tag: "v1.98.2"
     pullPolicy: IfNotPresent
     pullSecrets: []
   fileSizeLimit: 524288000 # 500MiB
@@ -919,7 +919,7 @@ meta:
   replicaCount: 1
   image:
     repository: supabase/postgres-meta
-    tag: "v0.84.2"
+    tag: "v0.100.1"
     pullPolicy: IfNotPresent
     pullSecrets: []
   extraEnv: []
@@ -1005,7 +1005,7 @@ imgproxy:
   replicaCount: 1
   image:
     repository: darthsim/imgproxy
-    tag: "v3.27.1"
+    tag: "v3.31.4"
     pullPolicy: IfNotPresent
     pullSecrets: []
   extraEnv: []
@@ -1044,7 +1044,7 @@ functions:
   replicaCount: 1
   image:
     repository: supabase/edge-runtime
-    tag: "v1.67.4"
+    tag: "v1.79.2"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # Default JWT verification for functions NOT listed in `verifyJwt` below.
@@ -1124,7 +1124,7 @@ analytics:
   image:
     repository: supabase/logflare
     # renovate: datasource=docker depName=supabase/logflare
-    tag: "1.43.1"
+    tag: "1.54.8"
     pullPolicy: IfNotPresent
     pullSecrets: []
   extraEnv: []
@@ -1164,7 +1164,7 @@ vector:
   image:
     repository: timberio/vector
     # renovate: datasource=docker depName=timberio/vector
-    tag: "0.53.0-alpine"
+    tag: "0.62.0-alpine"
     pullPolicy: IfNotPresent
     pullSecrets: []
   extraEnv: []

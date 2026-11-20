@@ -5,6 +5,6 @@ type: application
 
 dependencies:
   - name: traefik
-    version: ~37.2.0
+    version: ~37.4.0
     repository: "https://traefik.github.io/charts"
     alias: app

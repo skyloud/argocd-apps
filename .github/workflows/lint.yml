@@ -15,9 +15,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: azure/setup-helm@v5.0.1
+      - uses: azure/setup-helm@v5.1.0
         with:
-          version: v4.3.1
+          version: v4.3.2
       # charts (<org>/<chart>/) changed vs main; Renovate force-pushes on rebase, so not github.event.before
       - run: |
           git diff --name-only origin/main...HEAD \

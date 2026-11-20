@@ -1,5 +1,5 @@
 # renovate: datasource=docker depName=supabase/postgres
-FROM supabase/postgres:17.6.1.160
+FROM supabase/postgres:17.12.0.002
 
 # CloudNativePG's instance manager runs initdb/postgres as uid 26 (the
 # Debian/PGDG "postgres" user convention baked into CNPG's own official

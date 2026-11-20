@@ -66,7 +66,7 @@ jobs:
       - run: test -z "$(git tag -l "$TAG")"
         env:
           TAG: ${{ steps.cliff.outputs.version }}
-      - uses: helm/chart-releaser-action@v1.8.0
+      - uses: helm/chart-releaser-action@v1.9.0
         with:
           install_only: true
       # the version comes from the tag only, Chart.yaml is never edited
