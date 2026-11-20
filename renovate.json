@@ -30,9 +30,37 @@
       ],
       "datasourceTemplate": "github-releases",
       "packageNameTemplate": "{{#if (equals depName 'SOPS')}}getsops/sops{{else if (equals depName 'YQ')}}mikefarah/yq{{else}}helm/helm{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Gateway API CRDs vendored from the release asset",
+      "managerFilePatterns": [
+        "/^kubernetes-sigs/gateway-api/Chart\\.yaml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+appVersion: \"(?<currentValue>[^\"]+)\""
+      ]
     }
   ],
   "packageRules": [
+    {
+      "description": "Re-download the vendored Gateway API CRDs of the new release (allowed in the bot's config.js)",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchPackageNames": [
+        "kubernetes-sigs/gateway-api"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "curl -fsSL -o kubernetes-sigs/gateway-api/files/experimental-install.yaml https://github.com/kubernetes-sigs/gateway-api/releases/download/{{{newVersion}}}/experimental-install.yaml"
+        ],
+        "fileFilters": [
+          "kubernetes-sigs/gateway-api/files/**"
+        ],
+        "executionMode": "branch"
+      }
+    },
     {
       "description": "OCI charts are looked up as docker tags, keep helm ranges valid",
       "matchManagers": [
