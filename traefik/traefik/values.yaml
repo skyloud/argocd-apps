@@ -1,6 +1,7 @@
 app: {}
 
 # Gateway API CRDs (kubernetes-sigs/gateway-api chart of this repo, experimental channel).
+# TODO: before merging, remove the gateway-api dependency (Chart.yaml) and this block.
 gatewayApi:
   enabled: true
 
