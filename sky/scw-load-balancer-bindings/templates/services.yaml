@@ -1,0 +1,52 @@
+{{- $prefix := "service.beta.kubernetes.io/scw-loadbalancer-" }}
+{{- range $name, $b := $.Values.bindings }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ required (printf "bindings.%s.namespace is required" $name) $b.namespace }}
+  labels:
+    {{- include "scw-load-balancer-bindings.labels" $ | nindent 4 }}
+  annotations:
+    {{ $prefix }}id: {{ required (printf "bindings.%s.loadBalancerID is required" $name) $b.loadBalancerID | quote }}
+    {{ $prefix }}externally-managed: "true"
+    {{- if $b.proxyProtocolV2 }}
+    {{ $prefix }}proxy-protocol-v2: "true"
+    {{- end }}
+    {{- with $b.forwardPortAlgorithm }}
+    {{ $prefix }}forward-port-algorithm: {{ . | quote }}
+    {{- end }}
+    {{- with $b.healthCheck }}
+    {{- with .delay }}
+    {{ $prefix }}health-check-delay: {{ . | quote }}
+    {{- end }}
+    {{- with .timeout }}
+    {{ $prefix }}health-check-timeout: {{ . | quote }}
+    {{- end }}
+    {{- with .maxRetries }}
+    {{ $prefix }}health-check-max-retries: {{ . | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with $b.timeouts }}
+    {{- with .server }}
+    {{ $prefix }}timeout-server: {{ . | quote }}
+    {{- end }}
+    {{- with .tunnel }}
+    {{ $prefix }}timeout-tunnel: {{ . | quote }}
+    {{- end }}
+    {{- end }}
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: {{ default "Cluster" $b.externalTrafficPolicy }}
+  selector:
+    {{- required (printf "bindings.%s.selector is required" $name) $b.selector | toYaml | nindent 4 }}
+  ports:
+    {{- if not $b.ports }}{{ fail (printf "bindings.%s.ports needs at least one port" $name) }}{{ end }}
+    {{- range $p := $b.ports }}
+    - name: {{ $p.name }}
+      port: {{ $p.port }}
+      targetPort: {{ $p.targetPort }}
+      protocol: {{ default "TCP" $p.protocol }}
+    {{- end }}
+{{- end }}
