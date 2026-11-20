@@ -1,3 +1,8 @@
-# Gateway API standard-install.yaml, vendored from the release matching appVersion.
-# Nothing to configure. The ArgoCD Application needs syncOptions: [ServerSideApply=true]:
-# the CRDs exceed the 256KB last-applied-configuration annotation of client-side apply.
+# Gateway API experimental-install.yaml, vendored from the release matching appVersion.
+# Experimental channel because Traefik 3.6 reads TCPRoute/TLSRoute at v1alpha2, which the
+# standard channel stops serving from v1.5 (TLSRoute) / v1.6 (TCPRoute).
+# Nothing to configure. The ArgoCD Application needs:
+# - syncOptions: [ServerSideApply=true]: the CRDs exceed the 256KB last-applied-configuration
+#   annotation of client-side apply.
+# - annotation argocd.argoproj.io/compare-options: ServerSideDiff=true: without it, some CRDs
+#   stay OutOfSync after a successful sync (fields defaulted by the API server).

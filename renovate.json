@@ -53,7 +53,7 @@
       ],
       "postUpgradeTasks": {
         "commands": [
-          "curl -fsSL -o kubernetes-sigs/gateway-api/files/standard-install.yaml https://github.com/kubernetes-sigs/gateway-api/releases/download/{{{newVersion}}}/standard-install.yaml"
+          "curl -fsSL -o kubernetes-sigs/gateway-api/files/experimental-install.yaml https://github.com/kubernetes-sigs/gateway-api/releases/download/{{{newVersion}}}/experimental-install.yaml"
         ],
         "fileFilters": [
           "kubernetes-sigs/gateway-api/files/**"
