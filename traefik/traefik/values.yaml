@@ -1,5 +1,10 @@
 app: {}
 
+# Gateway API CRDs (kubernetes-sigs/gateway-api chart of this repo). Off by default:
+# enable it only where no other ArgoCD Application already owns these CRDs.
+gatewayApi:
+  enabled: false
+
 # Gateway API HTTPRoutes, rendered here so they land in the same ArgoCD
 # Application as the Gateway API CRDs the traefik subchart ships.
 # parentRefs defaults to the Gateway the subchart creates.
