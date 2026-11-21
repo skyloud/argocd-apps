@@ -861,7 +861,7 @@ storage:
   replicaCount: 1
   image:
     repository: supabase/storage-api
-    tag: "v1.98.2"
+    tag: "v1.98.5"
     pullPolicy: IfNotPresent
     pullSecrets: []
   fileSizeLimit: 524288000 # 500MiB
@@ -1044,7 +1044,7 @@ functions:
   replicaCount: 1
   image:
     repository: supabase/edge-runtime
-    tag: "v1.79.2"
+    tag: "v1.79.3"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # Default JWT verification for functions NOT listed in `verifyJwt` below.
