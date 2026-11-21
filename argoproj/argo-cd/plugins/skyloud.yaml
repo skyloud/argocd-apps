@@ -27,7 +27,7 @@ app:
           - name: YQ_VERSION
             value: "v4.54.3"
           - name: HELM_VERSION
-            value: "v3.22.1"
+            value: "v4.3.2"
         args:
           - |
             [ "$$(arch)" == "aarch64" ] && export ARCH="arm64" || export ARCH="amd64"
