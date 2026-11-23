@@ -5,6 +5,6 @@ type: application
 
 dependencies:
   - name: gpu-operator
-    version: ~25.10.1
+    version: ~26.7.3
     repository: "https://helm.ngc.nvidia.com/nvidia"
     alias: app
