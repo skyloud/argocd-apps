@@ -10,6 +10,6 @@ dependencies:
     alias: app
   - name: gateway-api
     version: ~1.0.0
-    repository: "oci://ghcr.io/skyloud/charts"
+    repository: "oci://ghcr.io/skyloud/charts/kubernetes-sigs"
     alias: gatewayApi
     condition: gatewayApi.enabled
