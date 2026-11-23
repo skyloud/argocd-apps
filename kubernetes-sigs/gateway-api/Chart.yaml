@@ -1,6 +1,6 @@
 apiVersion: v2
 name: gateway-api
-description: Gateway API CRDs (experimental channel)
+description: Gateway API CRDs (standard channel)
 version: 0.2.0
 type: application
 # renovate: datasource=github-releases depName=kubernetes-sigs/gateway-api

@@ -1,9 +1,11 @@
-# Gateway API experimental-install.yaml, vendored from the release matching appVersion.
-# Experimental channel because Traefik 3.7 still reads TCPRoute at v1alpha2 (experimentalChannel),
-# which the standard channel stops serving from v1.6. v1.6.x is what Traefik 3.7.18+ targets;
-# v1.7.0 is only required from Traefik 3.8.
+# Gateway API standard-install.yaml, vendored from the release matching appVersion.
+# Standard channel: Traefik 3.7 needs nothing from experimental (TLSRoute is read at v1; TCPRoute
+# at v1alpha2 only with the provider's experimentalChannel, which must then stay OFF: with standard
+# CRDs and experimentalChannel on, Traefik's Gateway provider never starts, silently).
+# For raw TCP, use Traefik's IngressRouteTCP; Traefik 3.8 reads TCPRoute at v1 (standard).
+# v1.6.x is what Traefik 3.7.18+ targets; v1.7.0 is only required from Traefik 3.8.
 # The bundle includes the safe-upgrades ValidatingAdmissionPolicy (since v1.5): it blocks
-# installing these experimental CRDs over standard ones, and any downgrade below v1.5.
+# installing experimental CRDs over these standard ones, and any downgrade below v1.5.
 # Nothing to configure. The ArgoCD Application needs:
 # - syncOptions: [ServerSideApply=true]: the CRDs exceed the 256KB last-applied-configuration
 #   annotation of client-side apply.
