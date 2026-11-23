@@ -1,1 +1,30 @@
 app: {}
+
+# The traefik chart ships no Gateway API CRDs since 40.2.0: install them first with the
+# kubernetes-sigs/gateway-api chart of this repo (iac-modules k8s/gateway-api, sync-wave -10).
+
+# Gateway API HTTPRoutes, rendered in the same ArgoCD Application as Traefik.
+# parentRefs defaults to the Gateway the subchart creates.
+routes: {}
+  # argocd:
+  #   namespace: argocd
+  #   hostnames:
+  #     - argocd.example.com
+  #   annotations: {}
+  #   parentRefs:
+  #     - name: traefik-gateway
+  #       namespace: system-traefik
+  #       sectionName: websecure
+  #   rules:
+  #     - matches:
+  #         - path:
+  #             type: PathPrefix
+  #             value: /
+  #           headers:
+  #             - type: Exact
+  #               name: X-Env
+  #               value: prod
+  #       backendRefs:
+  #         - name: argocd-server
+  #           port: 80
+  #           weight: 100
