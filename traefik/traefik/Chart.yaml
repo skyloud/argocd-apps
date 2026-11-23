@@ -1,10 +1,12 @@
 apiVersion: v2
 name: traefik
-version: 37.2.0
+# Not the published version: the release workflow sets it from the <org>/<name>-x.y.z tags
+# (git-cliff + conventional commits, see .github/workflows/release.yml).
+version: 42.4.1
 type: application
 
 dependencies:
   - name: traefik
-    version: ~37.4.0
+    version: ~42.4.1
     repository: "https://traefik.github.io/charts"
     alias: app

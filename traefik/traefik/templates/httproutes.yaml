@@ -1,0 +1,72 @@
+{{- $app := .Values.app | default dict -}}
+{{- $gatewayName := default "traefik-gateway" (dig "gateway" "name" "" $app) -}}
+{{- $gatewayNamespace := default .Release.Namespace (dig "namespaceOverride" "" $app) -}}
+{{- range $name, $route := .Values.routes }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  namespace: {{ required (printf "routes.%s.namespace is required" $name) $route.namespace }}
+  {{- with $route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $route.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  parentRefs:
+    {{- if $route.parentRefs }}
+    {{- range $route.parentRefs }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .name }}
+      namespace: {{ default $gatewayNamespace .namespace }}
+      {{- with .sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- else }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $gatewayName }}
+      namespace: {{ $gatewayNamespace }}
+    {{- end }}
+  rules:
+    {{- range $rule := $route.rules }}
+    - matches:
+        {{- if $rule.matches }}
+        {{- range $rule.matches }}
+        {{- $path := .path | default dict }}
+        - path:
+            type: {{ default "PathPrefix" (dig "type" "" $path) }}
+            value: {{ default "/" (dig "value" "" $path) | quote }}
+          {{- with .headers }}
+          headers:
+            {{- range . }}
+            - type: {{ default "Exact" .type }}
+              name: {{ .name | quote }}
+              value: {{ .value | quote }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- else }}
+        - path:
+            type: PathPrefix
+            value: "/"
+        {{- end }}
+      backendRefs:
+        {{- range $rule.backendRefs }}
+        - group: ""
+          kind: Service
+          name: {{ .name }}
+          port: {{ .port }}
+          weight: {{ if kindIs "invalid" .weight }}1{{ else }}{{ .weight }}{{ end }}
+          {{- with .namespace }}
+          namespace: {{ . }}
+          {{- end }}
+        {{- end }}
+    {{- end }}
+{{- end }}
