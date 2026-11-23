@@ -20,19 +20,19 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # charts (<org>/<chart>/) with a changed file in the push, as [{chart, name}]
+      # charts (<org>/<chart>/) with a changed file in the push, as [{chart, name, prefix}]; prefix <org>/<name> = tag prefix and OCI path
       - id: changed
         run: |
           git diff --name-only "$BASE" "$GITHUB_SHA" \
             | sed -nE 's|^([^/]+/[^/]+)/.*|\1/Chart.yaml|p' | xargs -r git ls-files -- \
-            | xargs -r yq -o json -I0 '{"chart": filename | sub("/Chart.yaml$"; ""), "name": .name}' \
+            | xargs -r yq -o json -I0 '{"chart": filename | sub("/Chart.yaml$"; ""), "name": .name, "prefix": (filename | sub("/[^/]+/Chart.yaml$"; "")) + "/" + .name}' \
             | jq -sc --arg tags "$(git tag -l)" "$KEEP" \
             | sed 's/^/charts=/' >> "$GITHUB_OUTPUT"
         env:
           # dispatch: empty tree = all charts; new branch: vs main; otherwise: the commits of this push
           BASE: ${{ github.event_name == 'workflow_dispatch' && '4b825dc642cb6eb9a060e54bf8d69288fbee4904' || github.event.created && 'origin/main' || github.event.before }}
-          # dispatch: only charts without their first release <name>-1.0.0
-          KEEP: ${{ github.event_name == 'workflow_dispatch' && 'map(select(.name + "-1.0.0" | IN($tags | splits("\n")) | not))' || '.' }}
+          # dispatch: only charts without their first release <org>/<name>-1.0.0
+          KEEP: ${{ github.event_name == 'workflow_dispatch' && 'map(select(.prefix + "-1.0.0" | IN($tags | splits("\n")) | not))' || '.' }}
 
   release:
     needs: charts
@@ -48,20 +48,20 @@ jobs:
         include: ${{ fromJSON(needs.charts.outputs.charts) }}
     env:
       CHART: ${{ matrix.chart }}
-      NAME: ${{ matrix.name }}
+      PREFIX: ${{ matrix.prefix }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      # version = last tag bumped from the chart's commits, 1.0.0 for the first release; [v0-9]: grafana-* must not match grafana-loki-*
+      # version = last tag <org>/<name>-x.y.z bumped from the chart's commits, 1.0.0 for the first release; [v0-9]: grafana/grafana-* must not match grafana/grafana-loki-*
       # quoted: the action pastes args unquoted into a bash line, which would glob them into file names
       - id: cliff
         uses: orhun/git-cliff-action@v4.9.1
         with:
-          args: --bump --unreleased --include-path '${{ matrix.chart }}/**' --tag-pattern '^${{ matrix.name }}-[v0-9]' --strip header
+          args: --bump --unreleased --include-path '${{ matrix.chart }}/**' --tag-pattern '^${{ matrix.prefix }}-[v0-9]' --strip header
         env:
           OUTPUT: ${{ matrix.chart }}/RELEASE-NOTES.md
-          GIT_CLIFF__BUMP__INITIAL_TAG: ${{ matrix.name }}-1.0.0
+          GIT_CLIFF__BUMP__INITIAL_TAG: ${{ matrix.prefix }}-1.0.0
       # nothing to bump gives an existing tag back: fail rather than overwrite it
       - run: test -z "$(git tag -l "$TAG")"
         env:
@@ -70,12 +70,17 @@ jobs:
         with:
           install_only: true
       # the version comes from the tag only, Chart.yaml is never edited
-      - run: helm package "$CHART" --dependency-update --version "${TAG#"$NAME"-}" --destination .cr-release-packages
+      - run: helm package "$CHART" --dependency-update --version "${TAG#"$PREFIX"-}" --destination .cr-release-packages
         env:
           TAG: ${{ steps.cliff.outputs.version }}
-      - run: cr upload --config .github/cr.yaml --commit "$GITHUB_SHA"
+      # tag and Release <org>/<name>-x.y.z; {{ .Version }} is cr's template, not a GitHub expression
+      - run: cr upload --config .github/cr.yaml --commit "$GITHUB_SHA" --release-name-template "$PREFIX-{{ .Version }}"
         env:
           CR_TOKEN: ${{ github.token }}
-      - run: cr push --config .github/cr.yaml --username "$GITHUB_ACTOR" --password "$CR_TOKEN"
-        env:
-          CR_TOKEN: ${{ github.token }}
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # <org>/<chart>/ is pushed to ghcr.io/<owner>/charts/<org>/<name>, the layout of this repo
+      - run: helm push .cr-release-packages/*.tgz "oci://ghcr.io/$GITHUB_REPOSITORY_OWNER/charts/${CHART%/*}"
