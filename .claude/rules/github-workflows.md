@@ -10,6 +10,6 @@ paths: [".github/**", "cliff.toml"]
 - `permissions: {}` at the top, the minimum per job. Every job sets `timeout-minutes`.
 - One job per target with a job-level `if:`, no per-step `if:`.
 - No commit or push from CI.
-- Releases: only `main`, for each chart with a changed file. The version is only the tag: `<name>-1.0.0` first (`workflow_dispatch`), then the last tag bumped by git-cliff from the chart's commits. `Chart.yaml` `version:` is never read nor edited. Never overwrite a published version.
+- Releases: only `main`, for each chart with a changed file. The version is only the tag `<org>/<name>-x.y.z` (also the Release name and the OCI path `charts/<org>/<name>`): `<org>/<name>-1.0.0` first (`workflow_dispatch`), then the last tag bumped by git-cliff from the chart's commits. `Chart.yaml` `version:` is never read nor edited. Never overwrite a published version.
 - `next` branch: only `charts/<name>:0.0.0-<github.sha>`. No tag, no Release.
 - A failed release: "Re-run failed jobs". Catch-up: `workflow_dispatch` on `main`.
