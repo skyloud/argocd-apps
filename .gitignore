@@ -6,3 +6,4 @@
 *.iml
 Chart.lock
 **/charts/*
+RELEASE-NOTES.md

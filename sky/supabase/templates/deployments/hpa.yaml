@@ -1,0 +1,62 @@
+{{- /*
+One HorizontalPodAutoscaler per service that opts in via
+`<svc>.autoscaling.enabled`. Every service's autoscaling block has the same
+shape, so they are rendered from one loop rather than a near-identical ~30
+line block copy-pasted into each templates/deployments/<svc>.yaml.
+
+That duplication is also why `pgdog` and `realtime` used to autoscale into a
+hole: both gate `spec.replicas` off when autoscaling is enabled (so the HPA
+owns the replica count) but neither file ever carried an HPA block — the
+result was a Deployment with no replicas field and no autoscaler, i.e.
+silently pinned to Kubernetes' default of 1. Driving both sides of that
+contract from the same list is what keeps it honest.
+
+Requires metrics-server on the target cluster.
+*/}}
+{{- $services := list "pgdog" "kong" "auth" "rest" "realtime" "storage" "functions" -}}
+{{- range $svc := $services }}
+{{- $cfg := index $.Values $svc }}
+{{- if and $cfg.enabled $cfg.autoscaling $cfg.autoscaling.enabled }}
+{{- $scaling := $cfg.autoscaling }}
+{{- if not (or $scaling.targetCPUUtilizationPercentage $scaling.targetMemoryUtilizationPercentage) }}
+{{- fail (printf "%s.autoscaling.enabled=true but neither targetCPUUtilizationPercentage nor targetMemoryUtilizationPercentage is set - an HPA with no metrics is rejected by the API server" $svc) }}
+{{- end }}
+{{- $svcDict := dict "root" $ "svc" $svc }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "supabase.svcFullname" $svcDict }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "supabase.svcLabels" $svcDict | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "supabase.svcFullname" $svcDict }}
+  minReplicas: {{ $scaling.minReplicas }}
+  maxReplicas: {{ $scaling.maxReplicas }}
+  metrics:
+    {{- with $scaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with $scaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+  {{- with $scaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

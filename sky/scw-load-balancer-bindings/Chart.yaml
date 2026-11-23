@@ -1,0 +1,5 @@
+apiVersion: v2
+name: scw-load-balancer-bindings
+description: Services binding pods to Scaleway Load Balancers created outside the cluster (CCM externally-managed mode)
+type: application
+version: 0.1.0

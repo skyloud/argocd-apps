@@ -1,0 +1,187 @@
+{{- /*
+CloudNativePG Cluster CR. Requires the CNPG operator installed on the target
+cluster (CRD postgresql.cnpg.io/v1).
+*/}}
+{{- if .Values.cnpg.enabled }}
+{{- $name := include "supabase.cnpgClusterName" . -}}
+{{- $repo := required "cnpg.image.repository is required when cnpg.enabled=true" .Values.cnpg.image.repository -}}
+{{- $tag := required "cnpg.image.tag is required when cnpg.enabled=true" .Values.cnpg.image.tag -}}
+{{- if eq $tag "latest" -}}
+{{- fail "cnpg.image.tag cannot be 'latest': CNPG's admission webhook rejects unpinned tags (it can't detect upgrades). Pin an explicit version." -}}
+{{- end -}}
+{{- $appSecret := default .Values.postgres.appSecret.name .Values.cnpg.bootstrap.initdb.secret.name -}}
+{{- /*
+When postgres.namespace differs from this release's namespace, that
+namespace is NOT created by this chart — same convention as every other
+namespace this org's charts run in (created by the caller: Terraform,
+`CreateNamespace=true`, or a plain `kubectl create namespace`). The chart
+creating it itself would race the caller that also needs to pre-create
+Secrets there before this Cluster can bootstrap.
+*/}}
+apiVersion: {{ .Values.cnpg.apiVersion }}
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "supabase.postgresNamespace" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+    {{- with .Values.cnpg.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.cnpg.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  imageName: {{ printf "%s:%s" $repo $tag | quote }}
+  {{- with .Values.cnpg.image.pullPolicy }}
+  imagePullPolicy: {{ . }}
+  {{- end }}
+  instances: {{ .Values.cnpg.instances }}
+  primaryUpdateMethod: {{ .Values.cnpg.primaryUpdateMethod | default "switchover" }}
+  enableSuperuserAccess: {{ .Values.cnpg.enableSuperuserAccess }}
+  {{- with .Values.cnpg.superuserSecret.name }}
+  superuserSecret:
+    name: {{ . | quote }}
+  {{- end }}
+
+  {{- $pullSecrets := .Values.cnpg.imagePullSecrets | default .Values.registryPullSecrets }}
+  {{- with $pullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  {{- /*
+  `owner: "app"` is hardcoded and must match the `username` key of whichever
+  secret ends up here — either CNPG's own auto-generated one (which always
+  uses this exact owner name), or a pre-existing secret you point at via
+  `postgres.appSecret.name` / `cnpg.bootstrap.initdb.secret.name` (the
+  latter wins if both are set; usually you only need to set the former —
+  every consuming service already reads it as the "app" credentials).
+  */}}
+  bootstrap:
+    initdb:
+      database: {{ include "supabase.dbName" . | quote }}
+      owner: "app"
+      {{- with $appSecret }}
+      secret:
+        name: {{ . | quote }}
+      {{- end }}
+
+  {{- /*
+  CNPG only reads bootstrap.initdb.secret ONCE, at initdb. Without this,
+  rotating the app password externally (e.g. an ExternalSecret) updates the
+  Kubernetes Secret and every consuming service, but the Postgres role itself
+  keeps the old password — auth then fails everywhere at once. `login` and
+  `passwordSecret` only, deliberately no `inRoles`: role-membership grants are
+  owned by files/supabase-init/, and CNPG reconciling that here would fight it.
+  */}}
+  {{- if .Values.cnpg.managedRoles.enabled }}
+  managed:
+    roles:
+      - name: "app"
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ required "postgres.appSecret.name or cnpg.bootstrap.initdb.secret.name is required when cnpg.managedRoles.enabled=true" $appSecret | quote }}
+  {{- end }}
+
+  {{- /*
+  pgaudit (cnpg.pgaudit.enabled) contributes ONLY parameters here, and
+  deliberately does not touch shared_preload_libraries: CNPG treats the mere
+  presence of `pgaudit.*` parameters as the switch, and adds/removes the
+  library itself (it also runs CREATE/DROP EXTENSION pgaudit across every
+  database in the cluster). Listing the library here as well would duplicate
+  an entry the operator already owns, and fight it on disable. See CNPG's
+  "PGAudit Logs" documentation section.
+
+  Explicit `parameters` entries win over the pgaudit defaults: `merge` keeps
+  keys already present in the destination, and deepCopy stops it mutating
+  .Values for later templates.
+  */}}
+  {{- $pg := .Values.cnpg.postgresql | default dict -}}
+  {{- $spl := $pg.sharedPreloadLibraries | default list -}}
+  {{- $params := $pg.parameters | default dict -}}
+  {{- if .Values.cnpg.pgaudit.enabled -}}
+  {{- $params = merge (deepCopy $params) (.Values.cnpg.pgaudit.parameters | default dict) -}}
+  {{- end -}}
+  {{- if or $spl $params }}
+  postgresql:
+    {{- with $spl }}
+    shared_preload_libraries:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with $params }}
+    parameters:
+      {{- range $k, $v := . }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+  storage:
+    size: {{ .Values.cnpg.storage.size }}
+    {{- with .Values.cnpg.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+
+  {{- if .Values.cnpg.walStorage.enabled }}
+  # Volume dedie aux WAL, separe des donnees.
+  #
+  # CNPG refuse de demarrer PostgreSQL quand la place manque pour les WAL
+  # (« Detected low-disk space condition, avoid starting the instance »). Avec
+  # un volume unique, n'importe quelle croissance cote donnees peut donc
+  # coucher l'instance — c'est exactement ce qui est arrive le 2026-09-22, ou
+  # des journaux applicatifs ont rempli le disque et empeche le primaire de
+  # redemarrer, alors que les donnees metier pesaient 17 Mo.
+  #
+  # Separer les deux borne le rayon d'action : une derive cote donnees ne peut
+  # plus empecher le demarrage, et inversement.
+  #
+  # ⚠️ A DECIDER A LA CREATION DU CLUSTER. Ajouter walStorage a un cluster en
+  # service impose de reconstruire chaque instance (un PVC ne se redimensionne
+  # pas a la baisse et ne se scinde pas). Le mettre des le depart ne coute rien.
+  walStorage:
+    size: {{ .Values.cnpg.walStorage.size }}
+    {{- with (default .Values.cnpg.storage.storageClass .Values.cnpg.walStorage.storageClass) }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+
+  {{- if .Values.cnpg.backup.enabled }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      enabled: true
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ required "cnpg.backup.objectName is required when cnpg.backup.enabled=true" .Values.cnpg.backup.objectName | quote }}
+  {{- end }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.cnpg.monitoring.enablePodMonitor }}
+
+  {{- with .Values.cnpg.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- /*
+  CNPG's Cluster CRD nests nodeSelector/tolerations under spec.affinity (its
+  own CNPG-specific affinity type, not a stock PodSpec.affinity) — NOT at
+  spec top-level like a normal Pod. `cnpg.affinity` can carry any other
+  CNPG-specific affinity field (nodeAffinity, enablePodAntiAffinity, ...).
+  */}}
+  {{- if or .Values.cnpg.nodeSelector .Values.cnpg.tolerations .Values.cnpg.affinity }}
+  affinity:
+    {{- with .Values.cnpg.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cnpg.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cnpg.affinity }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

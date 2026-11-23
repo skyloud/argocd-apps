@@ -1,7 +1,11 @@
 defaultAMIFamily: "Bottlerocket"
 
 app:
-  settings: 
+  # Argo CD keeps the controller when the Application is deleted: it must outlive the node classes and pools
+  # to drain the nodes, terminate the instances and remove its finalizers. The namespace deletion removes it afterwards.
+  additionalAnnotations:
+    argocd.argoproj.io/sync-options: Delete=false
+  settings:
     clusterName: "my-cluster"
 # AWS node classes example:
   nodeClasses:

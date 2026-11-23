@@ -3,7 +3,8 @@ app:
     mounts:
       dockercontainers: true
       varlog: true
-    serviceMonitor:
-      enabled: true
+  serviceMonitor:
+    enabled: true
+  controller:
     nodeSelector: {}
     tolerations: []

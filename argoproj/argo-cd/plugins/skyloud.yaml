@@ -23,11 +23,11 @@ app:
         command: [sh, -exc]
         env:
           - name: SOPS_VERSION
-            value: "v3.11.0"
+            value: "v3.13.3"
           - name: YQ_VERSION
-            value: "v4.25.3"
+            value: "v4.54.3"
           - name: HELM_VERSION
-            value: "v3.18.6"
+            value: "v3.22.1"
         args:
           - |
             [ "$$(arch)" == "aarch64" ] && export ARCH="arm64" || export ARCH="amd64"

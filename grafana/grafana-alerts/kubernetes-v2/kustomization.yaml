@@ -1,0 +1,3 @@
+resources:
+  - kubernetes.yaml
+  - persistentvolume.yaml

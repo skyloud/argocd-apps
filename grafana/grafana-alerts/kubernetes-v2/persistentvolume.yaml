@@ -1,0 +1,30 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: persistentvolume
+spec:
+  groups:
+    - name: persistentvolume
+      rules:
+        - alert: NoPVMetrics
+          expr: absent(kube_persistentvolume_capacity_bytes) > 0
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "anonymous"
+            env: "unknown"
+            summary: No PV metrics from kube-state-metrics
+
+        - alert: PVError
+          expr: |
+            kube_persistentvolume_status_phase{phase=~"Failed|Pending"} > 0
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is {{ $labels.phase }}

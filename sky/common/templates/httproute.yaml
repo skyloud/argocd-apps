@@ -1,0 +1,60 @@
+{{- $httpRoute := .Values.gatewayApi.httpRoute | default dict -}}
+{{- if $httpRoute.enabled -}}
+{{- if .Values.ingress.enabled }}
+{{- fail "ingress.enabled and gatewayApi.httpRoute.enabled cannot both be true" }}
+{{- end }}
+{{- $fullName := include "common.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
+{{- if not $httpRoute.parentRefs }}
+{{- fail "gatewayApi.httpRoute.parentRefs is required when gatewayApi.httpRoute.enabled=true" }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "common.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    {{- toYaml $httpRoute.parentRefs | nindent 4 }}
+  {{- with $httpRoute.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if $httpRoute.rules }}
+    {{- range $rule := $httpRoute.rules }}
+    - {{- with $rule.name }}
+      name: {{ . | quote }}
+      {{- end }}
+      {{- with $rule.matches }}
+      matches:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $rule.filters }}
+      filters:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $rule.timeouts }}
+      timeouts:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $rule.backendRefs }}
+      backendRefs:
+        {{- toYaml . | nindent 8 }}
+      {{- else }}
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+      {{- end }}
+    {{- end }}
+    {{- else }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+    {{- end }}
+{{- end }}

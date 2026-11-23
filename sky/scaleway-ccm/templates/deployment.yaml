@@ -30,7 +30,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: scaleway-cloud-controller-manager
-          image: scaleway/scaleway-cloud-controller-manager:v0.34.3
+          image: scaleway/scaleway-cloud-controller-manager:v0.36.3
           imagePullPolicy: Always
           args:
             - --cloud-provider=scaleway

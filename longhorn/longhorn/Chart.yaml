@@ -5,6 +5,6 @@ type: application
 
 dependencies:
   - name: longhorn
-    version: ~1.10.0
+    version: ~1.13.0
     repository: "https://charts.longhorn.io"
     alias: app
