@@ -1,5 +1,7 @@
 apiVersion: v2
 name: traefik
+# Not the published version: the release workflow sets it from the <org>/<name>-x.y.z tags
+# (git-cliff + conventional commits, see .github/workflows/release.yml).
 version: 42.4.1
 type: application
 
