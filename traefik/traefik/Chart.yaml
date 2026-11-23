@@ -1,10 +1,15 @@
 apiVersion: v2
 name: traefik
-version: 37.2.0
+version: 39.0.8
 type: application
 
 dependencies:
   - name: traefik
-    version: ~37.4.0
+    version: ~39.0.8
     repository: "https://traefik.github.io/charts"
     alias: app
+  - name: gateway-api
+    version: ~1.0.0
+    repository: "oci://ghcr.io/skyloud/charts/kubernetes-sigs"
+    alias: gatewayApi
+    condition: gatewayApi.enabled
