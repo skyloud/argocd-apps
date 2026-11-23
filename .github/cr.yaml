@@ -3,4 +3,3 @@ git-repo: argocd-apps
 skip-existing: true
 release-notes-file: RELEASE-NOTES.md
 make-release-latest: false
-registry-url: oci://ghcr.io/skyloud/charts
