@@ -1005,7 +1005,7 @@ imgproxy:
   replicaCount: 1
   image:
     repository: darthsim/imgproxy
-    tag: "v3.31.4"
+    tag: "v4.0.25"
     pullPolicy: IfNotPresent
     pullSecrets: []
   extraEnv: []
