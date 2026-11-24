@@ -44,16 +44,17 @@
   ],
   "packageRules": [
     {
-      "description": "Re-download the vendored Gateway API CRDs of the new release (allowed in the bot's config.js)",
+      "description": "Re-download the vendored Gateway API CRDs (standard channel) of the new release (allowed in the bot's config.js). Capped below v1.7.0: Traefik 3.7 targets v1.6.x, v1.7.0 is required from Traefik 3.8 (lift with it: #59)",
       "matchManagers": [
         "custom.regex"
       ],
       "matchPackageNames": [
         "kubernetes-sigs/gateway-api"
       ],
+      "allowedVersions": "<1.7.0",
       "postUpgradeTasks": {
         "commands": [
-          "curl -fsSL -o kubernetes-sigs/gateway-api/files/experimental-install.yaml https://github.com/kubernetes-sigs/gateway-api/releases/download/{{{newVersion}}}/experimental-install.yaml"
+          "curl -fsSL -o kubernetes-sigs/gateway-api/files/standard-install.yaml https://github.com/kubernetes-sigs/gateway-api/releases/download/{{{newVersion}}}/standard-install.yaml"
         ],
         "fileFilters": [
           "kubernetes-sigs/gateway-api/files/**"
