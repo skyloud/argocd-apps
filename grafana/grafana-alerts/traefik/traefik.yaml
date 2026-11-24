@@ -1,0 +1,156 @@
+# Same pack as nginx, on Traefik metrics. Needs the Traefik metrics scraped (ServiceMonitor) and
+# metrics.prometheus.addRoutersLabels: requests denied by a router Middleware (IPAllowList -> 403)
+# never reach the service metrics, so per-route counts come from the router metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: traefik
+spec:
+  groups:
+    - name: traefik
+      rules:
+        - alert: TraefikMetricsAbsent
+          expr: |
+            absent_over_time(traefik_config_last_reload_success[15m]) * on() group_left(env, tenant_id) group by (env, tenant_id) (up) > 0
+          for: 5m
+          keep_firing_for: 30m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "No Traefik metric collected"
+            description: "traefik_config_last_reload_success has been absent for 15m: every alert of the traefik pack is blind. Check the Traefik pods and their ServiceMonitor."
+
+        - alert: TraefikConfigReloadFailed
+          expr: |
+            min by (namespace, env, tenant_id) (traefik_config_last_reload_success) == 0
+          for: 10m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "Traefik failed to apply its last configuration in {{ $labels.namespace }}"
+            description: "The last dynamic configuration reload failed for 10m: new or changed routes are not served. Check the Traefik logs."
+
+        - alert: TlsCertExpireIn10d
+          expr: |
+            min by (cn, env, tenant_id) (traefik_tls_certs_not_after) - time() < 86400 * 10
+          for: 15m
+          keep_firing_for: 1h
+          labels:
+            alertowner: skyloud
+            severity: critical
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "TLS certificate expires in less than 10 days for {{ $labels.cn }}"
+            description: "The TLS certificate served by Traefik for {{ $labels.cn }} expires in {{ $value | humanizeDuration }} (threshold 10d). Check the corresponding Certificate/Secret."
+
+        - alert: MoreThanFive5xxIn10Mins
+          expr: |
+            (
+              sum by (service, env, tenant_id) (
+                increase(traefik_router_requests_total{code=~"5.."}[10m])
+              )
+              > 25
+            )
+            and
+            (
+              sum by (service, env, tenant_id) (
+                increase(traefik_router_requests_total{code=~"5.."}[10m])
+              )
+              > 3 *
+              avg_over_time(
+                (
+                  sum by (service, env, tenant_id) (
+                    increase(traefik_router_requests_total{code=~"5.."}[10m])
+                  )
+                )[1h:10m] offset 10m
+              )
+            )
+          for: 5m
+          keep_firing_for: 30m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "HTTP 5xx burst on Traefik service {{ $labels.service }}"
+            description: '{{ $value | printf "%.0f" }} HTTP 5xx in the last 10m (threshold 25), more than 3x the average of the previous hour.'
+
+        - alert: HighErrorRate5xx
+          expr: |
+            sum by (service, env, tenant_id) (
+              rate(traefik_router_requests_total{code=~"5.."}[5m])
+            )
+            /
+            sum by (service, env, tenant_id) (
+              rate(traefik_router_requests_total[5m])
+            )
+            > 0.05
+          for: 2m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "High HTTP 5xx error rate on Traefik service {{ $labels.service }}"
+            description: "{{ $value | humanizePercentage }} of the requests answered 5xx over the last 5m (threshold 5%, sustained 2m). No minimum traffic guard: a single failing request on an idle route is enough to reach 100%. The 5m rate window is the minimum valid one at a 60s scrape interval."
+
+        - alert: HighErrorCount401
+          expr: |
+            sum by (service, env, tenant_id) (
+              increase(traefik_router_requests_total{code="401"}[10m])
+            )
+            > 1000
+          for: 5m
+          keep_firing_for: 15m
+          labels:
+            alertowner: skyloud
+            severity: medium
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "High HTTP 401 count on Traefik service {{ $labels.service }}"
+            description: '{{ $value | printf "%.0f" }} HTTP 401 in the last 10m (threshold 1000).'
+
+        - alert: HighErrorCount403
+          expr: |
+            sum by (service, env, tenant_id) (
+              increase(traefik_router_requests_total{code="403"}[10m])
+            )
+            > 100
+          for: 5m
+          keep_firing_for: 15m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "High HTTP 403 count on Traefik service {{ $labels.service }}"
+            description: '{{ $value | printf "%.0f" }} HTTP 403 in the last 10m (threshold 100), including IP allowlist denials.'
+
+        - alert: HighLatency90p20s
+          expr: |
+            histogram_quantile(
+              0.9,
+              sum by (le, service, env, tenant_id) (
+                rate(traefik_router_request_duration_seconds_bucket[5m])
+              )
+            ) > 20
+          for: 5m
+          labels:
+            alertowner: skyloud
+            severity: high
+          annotations:
+            tenant_id: "{{ $labels.tenant_id }}"
+            env: "{{ $labels.env }}"
+            summary: "P90 latency above 20s on Traefik service {{ $labels.service }}"
+            description: 'P90 request duration is {{ $value | printf "%.1f" }}s over the last 5m (threshold 20s).'
