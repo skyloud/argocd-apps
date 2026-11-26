@@ -11,8 +11,12 @@ spec:
    # Name of a secret used to store the ACME account private key
    privateKeySecretRef:
      name: {{ .Values.defaultIssuer.privateKeySecretRef }}
-   # Enable the HTTP-01 challenge provider
+   # DNS-01 when defaultIssuer.dns01 is set, HTTP-01 otherwise
    solvers:
+{{- if .Values.defaultIssuer.dns01 }}
+   - dns01:
+       {{- toYaml .Values.defaultIssuer.dns01 | nindent 7 }}
+{{- else }}
    - http01:
 {{- if .Values.defaultIssuer.ingressClass }}
        ingress:
@@ -22,4 +26,5 @@ spec:
          parentRefs:
            - name: {{ .Values.defaultIssuer.gateway.name }}
              namespace: {{ .Values.defaultIssuer.gateway.namespace }}
+{{- end }}
 {{- end }}
