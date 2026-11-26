@@ -1,9 +1,13 @@
 defaultIssuer:
-  email: ""
+  acme:
+    email: ""
+    server: "https://acme-v02.api.letsencrypt.org/directory"
   privateKeySecretRef: letsencrypt-prod
   fullnameOverride: letsencrypt-prod
-  acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
-  ingressClass: nginx
+  gateway:
+    name: ""
+    namespace: ""
+  dns01: {}
 app:
   installCRDs: true
   prometheus:
@@ -11,5 +15,9 @@ app:
     servicemonitor:
       enabled: true
   config:
+    # Needs the Gateway API CRDs. Set to false when defaultIssuer.gateway is unused
+    # and no Gateway uses cert-manager annotations.
+    gatewayAPI:
+      enabled: true
     featureGates:
       ACMEHTTP01IngressPathTypeExact: false
