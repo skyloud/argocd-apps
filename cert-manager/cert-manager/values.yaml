@@ -4,6 +4,9 @@ defaultIssuer:
   fullnameOverride: letsencrypt-prod
   acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
   ingressClass: nginx
+  gateway:
+    name: ""
+    namespace: ""
 app:
   installCRDs: true
   prometheus:
