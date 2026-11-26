@@ -15,8 +15,9 @@ app:
     servicemonitor:
       enabled: true
   config:
-    # Must be true when defaultIssuer.gatewayHTTPRoute.parentRefs is set.
+    # Set to false when defaultIssuer.gatewayHTTPRoute.parentRefs is empty and no
+    # Gateway uses cert-manager annotations. Must stay true when parentRefs is set.
     gatewayAPI:
-      enabled: false
+      enabled: true
     featureGates:
       ACMEHTTP01IngressPathTypeExact: false
