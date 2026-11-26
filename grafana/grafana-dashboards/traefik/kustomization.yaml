@@ -1,0 +1,13 @@
+# Traefik Official Kubernetes Dashboard (grafana.com 17347), from traefik/traefik v3.7.19 contrib/grafana.
+# Needs the Traefik metrics scraped (ServiceMonitor) and metrics.prometheus.addRoutersLabels for the router panels.
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+
+commonAnnotations:
+  grafana_folder: "Traefik"
+
+configMapGenerator:
+  - name: dashboard-traefik
+    files: [traefik.json]
