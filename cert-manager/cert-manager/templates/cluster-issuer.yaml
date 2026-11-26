@@ -19,9 +19,6 @@ spec:
 {{- else }}
    - http01:
 {{- if .Values.defaultIssuer.gateway.name }}
-{{- if not .Values.app.config.gatewayAPI.enabled }}
-{{- fail "defaultIssuer.gateway needs app.config.gatewayAPI.enabled=true" }}
-{{- end }}
        gatewayHTTPRoute:
          parentRefs:
            - name: {{ .Values.defaultIssuer.gateway.name }}
