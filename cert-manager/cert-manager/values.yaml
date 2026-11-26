@@ -4,7 +4,6 @@ defaultIssuer:
     server: "https://acme-v02.api.letsencrypt.org/directory"
   privateKeySecretRef: letsencrypt-prod
   fullnameOverride: letsencrypt-prod
-  ingressClass: nginx
   gateway:
     name: ""
     namespace: ""

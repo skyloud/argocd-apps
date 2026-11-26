@@ -18,13 +18,15 @@ spec:
        {{- toYaml .Values.defaultIssuer.dns01 | nindent 7 }}
 {{- else }}
    - http01:
-{{- if .Values.defaultIssuer.ingressClass }}
-       ingress:
-         class: {{ .Values.defaultIssuer.ingressClass }}
-{{- else }}
+{{- if .Values.defaultIssuer.gateway.name }}
        gatewayHTTPRoute:
          parentRefs:
            - name: {{ .Values.defaultIssuer.gateway.name }}
              namespace: {{ .Values.defaultIssuer.gateway.namespace }}
+{{- else if .Values.defaultIssuer.ingressClass }}
+       ingress:
+         class: {{ .Values.defaultIssuer.ingressClass }}
+{{- else }}
+       ingress: {}
 {{- end }}
 {{- end }}
