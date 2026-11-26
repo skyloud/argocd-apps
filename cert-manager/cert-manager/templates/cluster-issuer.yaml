@@ -13,6 +13,9 @@ spec:
      name: {{ .Values.defaultIssuer.privateKeySecretRef }}
    # Enable the HTTP-01 challenge provider
    solvers:
+   {{- if and .Values.defaultIssuer.gatewayHTTPRoute.parentRefs (not .Values.app.config.gatewayAPI.enabled) }}
+   {{- fail "defaultIssuer.gatewayHTTPRoute.parentRefs needs app.config.gatewayAPI.enabled=true" }}
+   {{- end }}
    {{- with .Values.defaultIssuer.gatewayHTTPRoute.parentRefs }}
    - http01:
        gatewayHTTPRoute:

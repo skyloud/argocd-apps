@@ -15,7 +15,8 @@ app:
     servicemonitor:
       enabled: true
   config:
+    # Must be true when defaultIssuer.gatewayHTTPRoute.parentRefs is set.
     gatewayAPI:
-      enabled: true
+      enabled: false
     featureGates:
       ACMEHTTP01IngressPathTypeExact: false
