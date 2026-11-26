@@ -1,8 +1,9 @@
 defaultIssuer:
-  email: ""
+  acme:
+    email: ""
+    server: "https://acme-v02.api.letsencrypt.org/directory"
   privateKeySecretRef: letsencrypt-prod
   fullnameOverride: letsencrypt-prod
-  acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
   ingressClass: nginx
   gateway:
     name: ""

@@ -6,8 +6,8 @@ metadata:
 spec:
  acme:
    # The ACME server URL
-   server: {{ .Values.defaultIssuer.acmeServer }}
-   email: {{ .Values.defaultIssuer.email }}
+   server: {{ .Values.defaultIssuer.acme.server }}
+   email: {{ .Values.defaultIssuer.acme.email }}
    # Name of a secret used to store the ACME account private key
    privateKeySecretRef:
      name: {{ .Values.defaultIssuer.privateKeySecretRef }}
