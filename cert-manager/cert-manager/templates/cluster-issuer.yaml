@@ -17,13 +17,20 @@ spec:
    - dns01:
        {{- toYaml .Values.defaultIssuer.dns01 | nindent 7 }}
 {{- else }}
-   - http01:
 {{- if .Values.defaultIssuer.gateway.name }}
+   - http01:
        gatewayHTTPRoute:
          parentRefs:
            - name: {{ .Values.defaultIssuer.gateway.name }}
              namespace: {{ .Values.defaultIssuer.gateway.namespace }}
-{{- else if .Values.defaultIssuer.ingressClass }}
+{{- with .Values.defaultIssuer.gateway.dnsNames }}
+     selector:
+       dnsNames:
+         {{- toYaml . | nindent 9 }}
+{{- end }}
+{{- end }}
+   - http01:
+{{- if .Values.defaultIssuer.ingressClass }}
        ingress:
          class: {{ .Values.defaultIssuer.ingressClass }}
 {{- else }}
