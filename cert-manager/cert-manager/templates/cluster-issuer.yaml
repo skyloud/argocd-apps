@@ -18,12 +18,11 @@ spec:
        {{- toYaml .Values.defaultIssuer.dns01 | nindent 7 }}
 {{- else }}
    - http01:
-{{- $gateway := .Values.defaultIssuer.gateway | default dict }}
-{{- if $gateway.name }}
+{{- if .Values.defaultIssuer.gateway.name }}
        gatewayHTTPRoute:
          parentRefs:
-           - name: {{ $gateway.name }}
-             namespace: {{ $gateway.namespace }}
+           - name: {{ .Values.defaultIssuer.gateway.name }}
+             namespace: {{ .Values.defaultIssuer.gateway.namespace }}
 {{- else if .Values.defaultIssuer.ingressClass }}
        ingress:
          class: {{ .Values.defaultIssuer.ingressClass }}
