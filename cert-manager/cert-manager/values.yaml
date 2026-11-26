@@ -11,5 +11,7 @@ app:
     servicemonitor:
       enabled: true
   config:
+    gatewayAPI:
+      enabled: true
     featureGates:
       ACMEHTTP01IngressPathTypeExact: false
