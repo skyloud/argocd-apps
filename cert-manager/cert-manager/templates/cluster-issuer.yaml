@@ -13,6 +13,13 @@ spec:
      name: {{ .Values.defaultIssuer.privateKeySecretRef }}
    # Enable the HTTP-01 challenge provider
    solvers:
+   {{- with .Values.defaultIssuer.gatewayHTTPRoute.parentRefs }}
+   - http01:
+       gatewayHTTPRoute:
+         parentRefs:
+           {{- toYaml . | nindent 11 }}
+   {{- else }}
    - http01:
        ingress:
          class: {{ .Values.defaultIssuer.ingressClass }}
+   {{- end }}

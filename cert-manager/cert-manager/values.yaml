@@ -4,6 +4,10 @@ defaultIssuer:
   fullnameOverride: letsencrypt-prod
   acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
   ingressClass: nginx
+  # HTTP-01 through an HTTPRoute on these Gateways instead of the ingress class.
+  # Empty: the ingress solver is used.
+  gatewayHTTPRoute:
+    parentRefs: []
 app:
   installCRDs: true
   prometheus:
