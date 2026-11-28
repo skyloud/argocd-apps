@@ -706,7 +706,7 @@ auth:
   replicaCount: 1
   image:
     repository: supabase/gotrue
-    tag: "v2.198.0"
+    tag: "v2.199.0"
     pullPolicy: IfNotPresent
     pullSecrets: []
   siteUrl: ""
@@ -806,7 +806,7 @@ realtime:
   replicaCount: 1
   image:
     repository: supabase/realtime
-    tag: "v2.174.0"
+    tag: "v2.180.0"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # External ID for this Realtime "tenant" (multi-tenant mode is used even
@@ -861,7 +861,7 @@ storage:
   replicaCount: 1
   image:
     repository: supabase/storage-api
-    tag: "v1.98.2"
+    tag: "v1.101.1"
     pullPolicy: IfNotPresent
     pullSecrets: []
   fileSizeLimit: 524288000 # 500MiB
@@ -1044,7 +1044,7 @@ functions:
   replicaCount: 1
   image:
     repository: supabase/edge-runtime
-    tag: "v1.79.2"
+    tag: "v1.80.0"
     pullPolicy: IfNotPresent
     pullSecrets: []
   # Default JWT verification for functions NOT listed in `verifyJwt` below.
@@ -1124,7 +1124,7 @@ analytics:
   image:
     repository: supabase/logflare
     # renovate: datasource=docker depName=supabase/logflare
-    tag: "1.54.8"
+    tag: "1.56.0"
     pullPolicy: IfNotPresent
     pullSecrets: []
   extraEnv: []
