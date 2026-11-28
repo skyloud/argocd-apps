@@ -6,6 +6,6 @@ version: 3.2.2
 
 dependencies:
   - name: aws-load-balancer-controller
-    version: 3.2.2
+    version: 3.7.0
     repository: https://aws.github.io/eks-charts
     alias: app

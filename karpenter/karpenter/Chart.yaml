@@ -5,6 +5,6 @@ type: application
 
 dependencies:
   - name: karpenter
-    version: ~1.15.2
+    version: ~1.15.3
     repository: "oci://public.ecr.aws/karpenter"
     alias: app
